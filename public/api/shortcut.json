@@ -1,0 +1,73 @@
+{
+  "date": "16-Nov-26",
+  "schedule": "Morning Update",
+  "updatedTimeIst": "16 Nov 2026, 09:28 am IST",
+  "source": "KeralaGold.com",
+  "sourceUrl": "https://www.keralagold.com/daily-gold-prices.htm",
+  "pavan22k": 100320,
+  "gram22k": 12540,
+  "pavan24k": 109440,
+  "gram24k": 13680,
+  "gram18k": 10260,
+  "pavan22kFormatted": "₹1,00,320",
+  "gram22kFormatted": "₹12,540",
+  "changePavan": -600,
+  "changeGram": -75,
+  "changePercent": -0.59,
+  "direction": "down",
+  "trend": "Downward",
+  "monthlyHighPavan": 107080,
+  "monthlyHighDate": "5th and 6th November 2026 (Morning)",
+  "monthlyLowPavan": 100320,
+  "monthlyLowDate": "16th November 2026",
+  "spot22kGramInr": 10703.98,
+  "spot24kGramInr": 11685.57,
+  "spotChangePercent": -1.31,
+  "usdInr": 93.993,
+  "outlookSignal": "wait",
+  "outlookNote": "Global spot is softer (-1.31%); if flexible, check tomorrow's 9:30 AM IST fix.",
+  "recent5Days": [
+    {
+      "date": "16-Nov-26",
+      "session": "Today",
+      "pavan": 100320,
+      "gram": 12540,
+      "changePavan": -600,
+      "direction": "down"
+    },
+    {
+      "date": "15-Nov-26",
+      "session": "Yesterday",
+      "pavan": 100920,
+      "gram": 12615,
+      "changePavan": 0,
+      "direction": "flat"
+    },
+    {
+      "date": "14-Nov-26",
+      "session": "Daily",
+      "pavan": 100920,
+      "gram": 12615,
+      "changePavan": 200,
+      "direction": "up"
+    },
+    {
+      "date": "13-Nov-26",
+      "session": "Afternoon",
+      "pavan": 100720,
+      "gram": 12590,
+      "changePavan": -840,
+      "direction": "down"
+    },
+    {
+      "date": "13-Nov-26",
+      "session": "Morning",
+      "pavan": 101560,
+      "gram": 12695,
+      "changePavan": -960,
+      "direction": "down"
+    }
+  ],
+  "summaryText": "Kerala 22K Gold (16-Nov-26): 1 Pavan ₹1,00,320 (▼ -₹600), 1 Gram ₹12,540. 24K est: ₹13,680/g. Updated 16 Nov 2026, 09:28 am IST.",
+  "summaryMalayalam": "കേരള 22K സ്വർണ്ണ വില (16-Nov-26): 1 പവൻ ₹1,00,320 (▼ -₹600), 1 ഗ്രാം ₹12,540."
+}

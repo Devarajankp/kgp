@@ -1,0 +1,8 @@
+{
+  "name": "Gold Price web app",
+  "description": "Kerala Gold Price (KGP) — Live 22K daily gram & pavan rates, interactive monthly/yearly history from 1925, and jewellery making charge calculator PWA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

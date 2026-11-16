@@ -1,0 +1,306 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kerala Gold Price (KGP) API",
+    "version": "1.1.0",
+    "description": "CORS-enabled public JSON & text API for Kerala 22K/24K/18K gold rates, 1925–present historical archives, live global XAU/INR spot context, making-charge estimation, and Apple iPhone Shortcuts automation.",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://localhost:3000"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "API health check & active provider list",
+        "responses": {
+          "200": {
+            "description": "Service healthy"
+          }
+        }
+      }
+    },
+    "/api/gold/shortcut": {
+      "get": {
+        "summary": "Flat compact JSON or plain-text rate payload tailored for Apple iPhone Shortcuts & widgets",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "text"
+              ]
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "ml"
+              ]
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flat JSON or plain text summary"
+          }
+        }
+      }
+    },
+    "/api/gold/latest": {
+      "get": {
+        "summary": "Full latest Kerala gold rates + intraday/monthly entries + optional fallback probes",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "probe",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "LatestGoldResponse JSON"
+          }
+        }
+      }
+    },
+    "/api/gold/history": {
+      "get": {
+        "summary": "Historical Kerala gold rates (daily since Nov 2009, monthly benchmarks, yearly 1925–present)",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "daily",
+                "monthly",
+                "yearly"
+              ]
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1925
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HistoryResponse JSON"
+          }
+        }
+      }
+    },
+    "/api/gold/spot": {
+      "get": {
+        "summary": "Live international XAU/INR & USD/INR bullion spot snapshot from LivePriceOfGold.com",
+        "responses": {
+          "200": {
+            "description": "LiveSpotMarketData JSON"
+          }
+        }
+      }
+    },
+    "/api/gold/sources": {
+      "get": {
+        "summary": "Live availability and latency check across all 8 Kerala gold providers",
+        "responses": {
+          "200": {
+            "description": "Provider probes JSON"
+          }
+        }
+      }
+    },
+    "/api/gold/calculate": {
+      "get": {
+        "summary": "Calculate jewellery making charges, GST, HUID hallmarking, and reverse budget weight via GET query params (ideal for Shortcuts)",
+        "parameters": [
+          {
+            "name": "weight",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 1
+            }
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pavan",
+                "gram"
+              ],
+              "default": "pavan"
+            }
+          },
+          {
+            "name": "purity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "22k",
+                "24k",
+                "18k"
+              ],
+              "default": "22k"
+            }
+          },
+          {
+            "name": "ratePerGram",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "makingMode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "percent",
+                "perGram",
+                "flat"
+              ],
+              "default": "percent"
+            }
+          },
+          {
+            "name": "makingValue",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 10
+            }
+          },
+          {
+            "name": "gst",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 3
+            }
+          },
+          {
+            "name": "hallmark",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "stone",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 0
+            }
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 0
+            }
+          },
+          {
+            "name": "budget",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Itemized jewellery bill breakdown JSON"
+          }
+        }
+      },
+      "post": {
+        "summary": "Calculate jewellery making charges via JSON POST body",
+        "responses": {
+          "200": {
+            "description": "Itemized jewellery bill breakdown JSON"
+          }
+        }
+      }
+    },
+    "/api/gold/alert-check": {
+      "get": {
+        "summary": "Check whether today’s Kerala 22K rate is at or below a specified target price (ideal for iPhone daily Automations)",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pavan",
+                "gram"
+              ],
+              "default": "pavan"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Target alert evaluation JSON"
+          }
+        }
+      }
+    }
+  }
+}
