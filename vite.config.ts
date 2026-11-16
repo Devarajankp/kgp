@@ -5,7 +5,8 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
-const basePath = process.env.VITE_BASE_PATH || '/';
+const rawBase = process.env.VITE_BASE_PATH || '/';
+const basePath = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 
 export default defineConfig(() => {
   return {
@@ -59,7 +60,13 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          navigateFallback: `${basePath}index.html`,
+          navigateFallbackDenylist: [/^\/api\//, /\/api\//],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2}'],
+          globIgnores: ['**/assets/aistudio/**'],
           runtimeCaching: [
             {
               urlPattern: /\/api\/gold\/.*/i,

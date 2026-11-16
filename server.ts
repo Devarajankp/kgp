@@ -189,12 +189,18 @@ async function startServer() {
     handleCalculate((req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>, res),
   );
 
-  // Target Price Alert Check API (for iPhone Shortcuts daily automation)
+  // Dual-Unit Daily + Price-Change + Target Price Alert Check API (for iPhone Shortcuts, PWA & external webhooks)
   app.get('/api/gold/alert-check', async (req, res) => {
     try {
       const unit = req.query.unit === 'gram' ? 'gram' : 'pavan';
-      const targetPrice = clampFinite(req.query.target, 0, 0, 10_000_000);
-      if (targetPrice <= 0) {
+      const direction = req.query.direction === 'above' ? 'above' : 'below';
+      const format = String(req.query.format || 'json').toLowerCase();
+      const lang = req.query.lang === 'ml' ? 'ml' : 'en';
+      const hasTarget = req.query.target !== undefined && req.query.target !== '';
+      const targetPrice = hasTarget ? clampFinite(req.query.target, 0, 0, 10_000_000) : 0;
+      const prevPavan = clampFinite(req.query.prevPavan, 0, 0, 10_000_000);
+
+      if (hasTarget && targetPrice <= 0) {
         res.status(400).json({
           error: 'Please pass a valid positive numeric ?target= value (e.g. ?target=98000&unit=pavan).',
         });
@@ -202,29 +208,80 @@ async function startServer() {
       }
 
       const latest = await getLatestGoldWithFallback('auto', false);
-      const currentRate = unit === 'pavan' ? latest.current.pavan22k : latest.current.gram22k;
-      const targetMet = currentRate <= targetPrice;
-      const difference = Math.round(currentRate - targetPrice);
+      const {pavan22k, gram22k, changePavan, changeGram, dateLabel} = latest.current;
+      const arrow = latest.current.direction === 'up' ? '▲' : latest.current.direction === 'down' ? '▼' : '●';
+      const colorEmoji = latest.current.direction === 'up' ? '🟢' : latest.current.direction === 'down' ? '🔴' : '🟡';
+      const trendColor = latest.current.direction === 'up' ? 'green' : latest.current.direction === 'down' ? 'red' : 'amber';
+
+      const currentRate = unit === 'pavan' ? pavan22k : gram22k;
+      const targetMet =
+        targetPrice > 0
+          ? direction === 'above'
+            ? currentRate >= targetPrice
+            : currentRate <= targetPrice
+          : false;
+      const priceChanged = prevPavan > 0 ? pavan22k !== prevPavan : changePavan !== 0;
+
+      const chgPavanText =
+        changePavan === 0
+          ? '● 0'
+          : `${arrow} ${changePavan > 0 ? '+' : '-'}₹${Math.abs(changePavan).toLocaleString('en-IN')}`;
+      const chgGramText =
+        changeGram === 0
+          ? '● 0'
+          : `${arrow} ${changeGram > 0 ? '+' : '-'}₹${Math.abs(changeGram).toLocaleString('en-IN')}/g`;
+
+      const notificationTitle = targetMet
+        ? `${colorEmoji} 🎯 ${lang === 'ml' ? 'ലക്ഷ്യ വിലയിലെത്തി!' : 'Gold Target Met!'} (${dateLabel})`
+        : `${colorEmoji} ${arrow} ${lang === 'ml' ? 'കേരള 22K സ്വർണ്ണ വില' : 'Kerala 22K Gold'} · ${dateLabel}`;
+
+      const notificationBody =
+        lang === 'ml'
+          ? `1 പവൻ: ${formatInrServer(pavan22k)} (${chgPavanText}) | 1 ഗ്രാം: ${formatInrServer(gram22k)} (${chgGramText}) · ${latest.scheduleLabel}`
+          : `1 Pavan: ${formatInrServer(pavan22k)} (${chgPavanText}) | 1 Gram: ${formatInrServer(gram22k)} (${chgGramText}) · ${latest.scheduleLabel}`;
 
       res.setHeader('Cache-Control', 'no-store');
+
+      if (format === 'text' || format === 'txt') {
+        res.type('text/plain; charset=utf-8').send(`${notificationTitle}\n${notificationBody}`);
+        return;
+      }
+
       res.json({
+        alertTriggered: targetMet || priceChanged,
+        targetEnabled: targetPrice > 0,
         targetMet,
+        priceChanged,
         unit,
-        targetPrice,
+        direction,
+        targetPrice: targetPrice > 0 ? targetPrice : null,
+        pavan22k,
+        gram22k,
+        pavan22kFormatted: formatInrServer(pavan22k),
+        gram22kFormatted: formatInrServer(gram22k),
+        changePavan,
+        changeGram,
+        changePavanFormatted: chgPavanText,
+        changeGramFormatted: chgGramText,
+        trendDirection: latest.current.direction,
+        trendSymbol: arrow,
+        colorEmoji,
+        trendColor,
         currentRate,
         currentRateFormatted: formatInrServer(currentRate),
-        targetPriceFormatted: formatInrServer(targetPrice),
-        difference,
-        dateLabel: latest.current.dateLabel,
+        targetPriceFormatted: targetPrice > 0 ? formatInrServer(targetPrice) : null,
+        difference: targetPrice > 0 ? Math.round(currentRate - targetPrice) : null,
+        dateLabel,
+        schedule: latest.scheduleLabel,
         updatedTimeIst: latest.updatedTimeIst,
         source: latest.sourceName,
-        message: targetMet
-          ? `Target met! Kerala 22K (${unit}) is ${formatInrServer(currentRate)}, at or below ${formatInrServer(targetPrice)}.`
-          : `Not met yet. Current Kerala 22K (${unit}) is ${formatInrServer(currentRate)} (${formatInrServer(difference)} above ${formatInrServer(targetPrice)}).`,
+        notificationTitle,
+        notificationBody,
+        message: `${notificationTitle} — ${notificationBody}`,
       });
     } catch (error) {
       res.status(502).json({
-        error: error instanceof Error ? error.message : 'Unable to evaluate target price.',
+        error: error instanceof Error ? error.message : 'Unable to evaluate gold price alert.',
       });
     }
   });

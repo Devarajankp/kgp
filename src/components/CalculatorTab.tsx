@@ -30,6 +30,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
 
   const [makingMode, setMakingMode] = useState<MakingMode>('percent');
   const [makingPercent, setMakingPercent] = useState<number>(10);
+  const [makingPercentInput, setMakingPercentInput] = useState<string>('10');
   const [makingPerGram, setMakingPerGram] = useState<number>(950);
   const [makingFlat, setMakingFlat] = useState<number>(8000);
 
@@ -331,18 +332,50 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
 
             {makingMode === 'percent' && (
               <div className="mt-2.5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] sm:text-xs tabular-nums">
-                  <span className="text-slate-500 dark:text-slate-400">{t.vaPercentage}</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">{makingPercent}%</span>
+                <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs tabular-nums">
+                  <label htmlFor="calc-va-percent-input" className="text-slate-600 dark:text-slate-300 font-medium">
+                    {t.vaPercentage}
+                  </label>
+                  <div className="inline-flex items-center gap-1 rounded-xl border border-slate-900/12 bg-white/85 px-2.5 py-1 focus-within:ring-2 focus-within:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80">
+                    <input
+                      id="calc-va-percent-input"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={makingPercentInput}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setMakingPercentInput(raw);
+                        if (raw === '') {
+                          setMakingPercent(0);
+                          return;
+                        }
+                        const parsed = Number(raw);
+                        if (Number.isFinite(parsed)) {
+                          const clamped = Math.max(0, Math.min(100, parsed));
+                          setMakingPercent(clamped);
+                        }
+                      }}
+                      onBlur={() => setMakingPercentInput(String(makingPercent))}
+                      className="w-14 bg-transparent text-right font-mono-nums text-xs sm:text-sm font-bold text-slate-900 focus:outline-none dark:text-white"
+                    />
+                    <span className="font-semibold text-amber-700 dark:text-amber-400">%</span>
+                  </div>
                 </div>
                 <input
-                  aria-label="Making charge percentage"
+                  aria-label="Making charge percentage slider"
                   type="range"
                   min="0"
                   max="30"
                   step="0.5"
-                  value={makingPercent}
-                  onChange={(e) => setMakingPercent(Number(e.target.value))}
+                  value={Math.min(30, makingPercent)}
+                  onChange={(e) => {
+                    const nextVal = Number(e.target.value);
+                    setMakingPercent(nextVal);
+                    setMakingPercentInput(String(nextVal));
+                  }}
                   className="w-full accent-amber-600 cursor-pointer"
                 />
                 <div className="grid grid-cols-6 gap-1.5">
@@ -350,7 +383,10 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                     <button
                       key={pct}
                       type="button"
-                      onClick={() => setMakingPercent(pct)}
+                      onClick={() => {
+                        setMakingPercent(pct);
+                        setMakingPercentInput(String(pct));
+                      }}
                       className={`min-h-[30px] rounded-lg px-1.5 py-1 text-[11px] font-semibold tabular-nums cursor-pointer ${
                         makingPercent === pct
                           ? 'bg-amber-600 text-white dark:bg-amber-500 dark:text-slate-950'

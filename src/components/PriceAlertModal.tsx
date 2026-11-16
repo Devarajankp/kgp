@@ -1,12 +1,28 @@
-import {Bell, BellOff, BellRing, CheckCircle2, X} from 'lucide-react';
-import React, {useEffect, useState} from 'react';
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Bell,
+  BellOff,
+  BellRing,
+  Check,
+  Copy,
+  Smartphone,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import React, {useEffect, useMemo, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {
   clearPriceAlert,
+  createDefaultAlertConfig,
   dispatchGoldNotification,
-  getNotificationPermissionState,
+  formatAlertNotification,
+  getNotificationCapability,
   readPriceAlert,
   requestNotificationPermission,
   savePriceAlert,
+  type ActiveAlertEvent,
+  type NotificationCapability,
   type PriceAlertConfig,
 } from '../services/priceAlerts';
 import type {AppLanguage, LatestGoldResponse} from '../types/gold';
@@ -18,6 +34,7 @@ interface PriceAlertModalProps {
   data: LatestGoldResponse | null;
   lang: AppLanguage;
   onAlertChanged: (config: PriceAlertConfig | null) => void;
+  onTriggerPreviewBanner?: (event: ActiveAlertEvent) => void;
 }
 
 export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
@@ -26,141 +43,273 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
   data,
   lang,
   onAlertChanged,
+  onTriggerPreviewBanner,
 }) => {
   const currentPavan = data?.current.pavan22k || 100320;
   const currentGram = data?.current.gram22k || 12540;
 
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [notifyOnPriceChange, setNotifyOnPriceChange] = useState<boolean>(true);
+  const [notifyDailySummary, setNotifyDailySummary] = useState<boolean>(true);
+  const [targetEnabled, setTargetEnabled] = useState<boolean>(false);
   const [unit, setUnit] = useState<'pavan' | 'gram'>('pavan');
+  const [direction, setDirection] = useState<'below' | 'above'>('below');
   const [targetInput, setTargetInput] = useState<string>(String(Math.max(0, currentPavan - 1000)));
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default');
-  const [savedConfig, setSavedConfig] = useState<PriceAlertConfig | null>(null);
+  const [capability, setCapability] = useState<NotificationCapability>('default');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [copiedShortcut, setCopiedShortcut] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setPermission(getNotificationPermissionState());
+    setCapability(getNotificationCapability());
     const existing = readPriceAlert();
-    setSavedConfig(existing);
     if (existing) {
+      setEnabled(existing.enabled);
+      setNotifyOnPriceChange(existing.notifyOnPriceChange);
+      setNotifyDailySummary(existing.notifyDailySummary);
+      setTargetEnabled(existing.targetEnabled);
       setUnit(existing.unit);
+      setDirection(existing.direction);
       setTargetInput(String(existing.targetPrice));
     } else {
-      setUnit('pavan');
-      setTargetInput(String(Math.max(0, currentPavan - 1000)));
+      const def = createDefaultAlertConfig(currentPavan);
+      setEnabled(true);
+      setNotifyOnPriceChange(def.notifyOnPriceChange);
+      setNotifyDailySummary(def.notifyDailySummary);
+      setTargetEnabled(false);
+      setUnit(def.unit);
+      setDirection(def.direction);
+      setTargetInput(String(def.targetPrice));
     }
     setFeedback(null);
+    setCopiedShortcut(false);
   }, [open, currentPavan]);
 
-  if (!open) return null;
+  const shortcutApiUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const origin = window.location.origin;
+    const base = import.meta.env.BASE_URL || '/';
+    const isStaticPages = window.location.hostname.endsWith('github.io');
+    if (isStaticPages) {
+      return `${origin}${base}api/shortcut.json`;
+    }
+    const qs = new URLSearchParams({unit, direction, format: 'text'});
+    if (targetEnabled && Number(targetInput) > 0) {
+      qs.set('target', String(Math.round(Number(targetInput))));
+    }
+    return `${origin}${base}api/gold/alert-check?${qs.toString()}`;
+  }, [unit, direction, targetEnabled, targetInput]);
+
+  if (!open || typeof document === 'undefined') return null;
 
   const handleUnitChange = (nextUnit: 'pavan' | 'gram') => {
     setUnit(nextUnit);
-    if (!savedConfig || savedConfig.unit !== nextUnit) {
-      setTargetInput(
-        nextUnit === 'pavan'
-          ? String(Math.max(0, currentPavan - 1000))
-          : String(Math.max(0, currentGram - 150)),
-      );
+    setTargetInput(
+      nextUnit === 'pavan'
+        ? String(Math.max(0, currentPavan - 1000))
+        : String(Math.max(0, currentGram - 150)),
+    );
+  };
+
+  const handleToggleMaster = (nextEnabled: boolean) => {
+    setEnabled(nextEnabled);
+    if (!nextEnabled) {
+      const existing = readPriceAlert();
+      const updated: PriceAlertConfig = {
+        ...(existing || createDefaultAlertConfig(currentPavan)),
+        enabled: false,
+        updatedAt: new Date().toISOString(),
+      };
+      savePriceAlert(updated);
+      onAlertChanged(updated);
+      setFeedback(lang === 'ml' ? 'എല്ലാ അലേർട്ടുകളും ഓഫ് ചെയ്തു.' : 'All price notifications turned OFF.');
     }
   };
 
-  const handleSaveAlert = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const numericTarget = Math.max(0, Math.round(Number(targetInput) || 0));
-    if (numericTarget <= 0) {
-      setFeedback(lang === 'ml' ? 'ശരിയായ വില നൽകുക.' : 'Enter a valid target price.');
+    if (targetEnabled && numericTarget <= 0) {
+      setFeedback(lang === 'ml' ? 'ശരിയായ ലക്ഷ്യ വില നൽകുക.' : 'Enter a valid target price.');
       return;
     }
 
-    let perm = getNotificationPermissionState();
-    if (perm === 'default') {
-      perm = await requestNotificationPermission();
-      setPermission(perm);
+    let cap = getNotificationCapability();
+    if (enabled && cap === 'default') {
+      cap = await requestNotificationPermission();
+      setCapability(cap);
     }
 
+    const existing = readPriceAlert();
     const config: PriceAlertConfig = {
-      enabled: true,
+      enabled,
+      notifyOnPriceChange,
+      notifyDailySummary,
+      targetEnabled,
       unit,
-      targetPrice: numericTarget,
+      direction,
+      targetPrice: numericTarget > 0 ? numericTarget : currentPavan - 1000,
+      lastSeenKey: existing?.lastSeenKey,
+      lastSeenPavan: data?.current.pavan22k ?? existing?.lastSeenPavan,
+      lastSeenGram: data?.current.gram22k ?? existing?.lastSeenGram,
+      lastDailyKey: existing?.lastDailyKey,
+      lastTargetKey: existing?.lastTargetKey,
       updatedAt: new Date().toISOString(),
     };
     savePriceAlert(config);
-    setSavedConfig(config);
     onAlertChanged(config);
 
-    const activeRate = unit === 'pavan' ? currentPavan : currentGram;
-    const isMatchedNow = activeRate <= numericTarget;
+    if (!enabled) {
+      setFeedback(lang === 'ml' ? 'അലേർട്ട് ഓഫ് ചെയ്തു.' : 'Notifications paused (OFF).');
+      return;
+    }
 
-    if (perm === 'granted') {
-      if (isMatchedNow) {
-        await dispatchGoldNotification(
-          `Gold Target Reached: ${formatInr(activeRate)}`,
-          `Current 22K ${unit === 'pavan' ? '1 Pavan' : '1 Gram'} price (${formatInr(activeRate)}) is already at or below ${formatInr(numericTarget)}.`,
-        );
-      }
-      setFeedback(
-        isMatchedNow
-          ? lang === 'ml'
-            ? 'ലക്ഷ്യ വിലയിലെത്തി! നോട്ടിഫിക്കേഷൻ അയച്ചു.'
-            : 'Target already met — notification sent!'
-          : lang === 'ml'
-            ? 'ലക്ഷ്യ വില അലേർട്ട് സജ്ജമാക്കി!'
-            : 'Target alert saved! You will be alerted when rates drop to or below your target.',
-      );
-    } else if (perm === 'denied') {
+    const activeRate = unit === 'pavan' ? currentPavan : currentGram;
+    const isMatchedNow =
+      targetEnabled &&
+      numericTarget > 0 &&
+      (direction === 'above' ? activeRate >= numericTarget : activeRate <= numericTarget);
+
+    if (isMatchedNow && data) {
+      const event = formatAlertNotification({
+        data,
+        deltaPavan: data.current.changePavan,
+        deltaGram: data.current.changeGram,
+        reasons: ['target'],
+        config,
+        lang,
+      });
+      await dispatchGoldNotification(event.title, event.body);
+      onTriggerPreviewBanner?.(event);
       setFeedback(
         lang === 'ml'
-          ? 'ലക്ഷ്യ വില സേവ് ചെയ്തു. ബ്രൗസർ നോട്ടിഫിക്കേഷൻ ബ്ലോക്ക് ചെയ്തിരിക്കുകയാണ് — ആപ്പിൽ അലേർട്ട് കാണിക്കും.'
-          : 'Alert saved for in-app banners. Enable browser notifications in site settings for push alerts.',
+          ? 'ലക്ഷ്യ വിലയിലെത്തി! അലേർട്ട് നൽകി.'
+          : 'Target price already met — alert triggered!',
+      );
+      return;
+    }
+
+    if (cap === 'granted') {
+      setFeedback(
+        lang === 'ml'
+          ? 'നോട്ടിഫിക്കേഷനുകൾ സജീവമായി (1 പവൻ & 1 ഗ്രാം).'
+          : 'Alerts active! Instant 1 Pavan & 1 Gram notifications are enabled.',
+      );
+    } else if (cap === 'ios-needs-install') {
+      setFeedback(
+        lang === 'ml'
+          ? 'സേവ് ചെയ്തു! iOS ലോക്ക്-സ്ക്രീൻ അലേർട്ടിന് "Add to Home Screen" അല്ലെങ്കിൽ iPhone Shortcut ഉപയോഗിക്കുക.'
+          : 'Saved for in-app alerts! Install to iPhone Home Screen or use the Shortcut URL below for Lock-Screen alerts.',
       );
     } else {
       setFeedback(
         lang === 'ml'
-          ? 'ലക്ഷ്യ വില സേവ് ചെയ്തു (ഇൻ-ആപ്പ് അലേർട്ട്).'
-          : 'Alert saved! In-app alert banners will notify you when matched.',
+          ? 'ഇൻ-ആപ്പ് & ഷോർട്ട്കട്ട് അലേർട്ടുകൾ സേവ് ചെയ്തു!'
+          : 'Saved! Live in-app alerts are active whenever gold rates update.',
       );
     }
   };
 
   const handleTestNotification = async () => {
-    let perm = getNotificationPermissionState();
-    if (perm === 'default') {
-      perm = await requestNotificationPermission();
-      setPermission(perm);
+    let cap = getNotificationCapability();
+    if (cap === 'default') {
+      cap = await requestNotificationPermission();
+      setCapability(cap);
     }
-    if (perm !== 'granted') {
-      setFeedback(
-        lang === 'ml'
-          ? 'ടെസ്റ്റ് ചെയ്യാൻ ബ്രൗസർ നോട്ടിഫിക്കേഷൻ അനുമതി നൽകുക.'
-          : 'Please allow browser notifications to test alerts.',
-      );
-      return;
+
+    if (data) {
+      const demoEvent = formatAlertNotification({
+        data,
+        deltaPavan: data.current.changePavan,
+        deltaGram: data.current.changeGram,
+        reasons: data.current.changePavan !== 0 ? ['change'] : ['daily'],
+        lang,
+      });
+      onTriggerPreviewBanner?.(demoEvent);
+
+      if (cap === 'granted') {
+        const ok = await dispatchGoldNotification(demoEvent.title, demoEvent.body, 'kgp-test-alert');
+        if (ok) {
+          setFeedback(
+            lang === 'ml'
+              ? 'OS നോട്ടിഫിക്കേഷനും ഇൻ-ആപ്പ് അലേർട്ടും അയച്ചു!'
+              : 'Test notification sent (both OS Push & In-App banner)!',
+          );
+          return;
+        }
+      }
     }
-    const ok = await dispatchGoldNotification(
-      'Kerala Gold Price Alert Active',
-      `Current 22K rate: ${formatInr(currentPavan)} / Pavan (${formatInr(currentGram)} / g).`,
-    );
+
     setFeedback(
-      ok
+      cap === 'ios-needs-install'
         ? lang === 'ml'
-          ? 'ടെസ്റ്റ് നോട്ടിഫിക്കേഷൻ അയച്ചു!'
-          : 'Test notification sent!'
-        : 'Notification could not be displayed in this browser context.',
+          ? 'ഇൻ-ആപ്പ് അലേർട്ട് പ്രിവ്യൂ അയച്ചു! iPhone-ൽ Home Screen ആപ്പായി ഇൻസ്റ്റാൾ ചെയ്താൽ Lock-Screen പുഷ് ലഭിക്കും.'
+          : 'Live in-app alert banner triggered! For iPhone Lock-Screen push, open from Home Screen app or use Shortcut below.'
+        : lang === 'ml'
+          ? 'ഇൻ-ആപ്പ് അലേർട്ട് പ്രിവ്യൂ അയച്ചു!'
+          : 'Live in-app color-coded alert triggered! Allow browser permission for OS popups.',
     );
   };
 
-  const handleRemoveAlert = () => {
+  const handleCopyShortcutUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shortcutApiUrl);
+      setCopiedShortcut(true);
+      setTimeout(() => setCopiedShortcut(false), 2000);
+    } catch {
+      setFeedback(shortcutApiUrl);
+    }
+  };
+
+  const handleResetAll = () => {
     clearPriceAlert();
-    setSavedConfig(null);
+    setEnabled(false);
     onAlertChanged(null);
-    setFeedback(lang === 'ml' ? 'വില അലേർട്ട് നീക്കം ചെയ്തു.' : 'Target price alert cleared.');
+    setFeedback(lang === 'ml' ? 'വില അലേർട്ട് നീക്കം ചെയ്തു.' : 'All alerts cleared and disabled.');
+  };
+
+  const renderCapabilityBadge = () => {
+    switch (capability) {
+      case 'granted':
+        return (
+          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            {lang === 'ml' ? 'OS പുഷ് + ഇൻ-ആപ്പ് സജീവം' : 'OS Push + In-App Active'}
+          </span>
+        );
+      case 'ios-needs-install':
+        return (
+          <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+            <Smartphone className="h-3.5 w-3.5" />
+            {lang === 'ml' ? 'ഇൻ-ആപ്പ് + Shortcut (PWA-ൽ പുഷ്)' : 'In-App + Shortcut (Install PWA for iOS Push)'}
+          </span>
+        );
+      case 'denied':
+        return (
+          <span className="font-semibold text-rose-700 dark:text-rose-400">
+            {lang === 'ml' ? 'ഇൻ-ആപ്പ് സജീവം (ബ്രൗസർ ബ്ലോക്ക്)' : 'In-App Active (OS Blocked in Settings)'}
+          </span>
+        );
+      case 'default':
+        return (
+          <span className="font-semibold text-amber-700 dark:text-amber-400">
+            {lang === 'ml' ? 'അനുമതി നൽകുക' : 'Tap Save / Test to Allow OS Push'}
+          </span>
+        );
+      default:
+        return (
+          <span className="font-semibold text-amber-700 dark:text-amber-400">
+            {lang === 'ml' ? 'ഇൻ-ആപ്പ് & API അലേർട്ട് സജീവം' : 'In-App + API / Shortcut Active'}
+          </span>
+        );
+    }
   };
 
   const currentRateForUnit = unit === 'pavan' ? currentPavan : currentGram;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-3 sm:p-4"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="alert-modal-title"
@@ -168,128 +317,263 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="liquid-glass w-full max-w-md rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100">
+      <div className="liquid-glass w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <BellRing className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
             <h2 id="alert-modal-title" className="font-display text-base sm:text-lg font-bold">
-              {lang === 'ml' ? 'ലക്ഷ്യ വില അലേർട്ട്' : 'Target Price Alert'}
+              {lang === 'ml' ? 'സ്വർണ്ണ വില അലേർട്ടുകൾ' : 'Gold Price Alerts'}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close target alert dialog"
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+            aria-label="Close price alert settings"
+            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-          {lang === 'ml'
-            ? 'ദിവസേനയുള്ള സ്വർണ്ണ വില നിങ്ങളുടെ ലക്ഷ്യ വിലയിലോ അതിലും താഴെയോ എത്തിയാൽ ബ്രൗസർ നോട്ടിഫിക്കേഷൻ വഴി അറിയിപ്പ് ലഭിക്കും.'
-            : 'Get notified via browser notification whenever the daily 22K Kerala rate reaches or falls below your target price.'}
-        </p>
-
-        <form onSubmit={handleSaveAlert} className="mt-4 space-y-3.5">
+        {/* Master ON / OFF Switch */}
+        <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-900/10 bg-white/65 px-3.5 py-2.5 dark:border-white/12 dark:bg-white/8">
           <div>
-            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              {lang === 'ml' ? 'അളവ് തിരഞ്ഞെടുക്കുക' : 'Alert Unit'}
-            </span>
-            <div className="liquid-segmented mt-1.5 grid grid-cols-2 rounded-xl p-1">
-              <button
-                type="button"
-                onClick={() => handleUnitChange('pavan')}
-                className={`min-h-[36px] rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  unit === 'pavan'
-                    ? 'liquid-pill-active text-slate-900 dark:text-white'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                {lang === 'ml' ? '1 പവൻ (8g)' : '1 Pavan (8g)'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleUnitChange('gram')}
-                className={`min-h-[36px] rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  unit === 'gram'
-                    ? 'liquid-pill-active text-slate-900 dark:text-white'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                {lang === 'ml' ? '1 ഗ്രാം (22K)' : '1 Gram (22K)'}
-              </button>
-            </div>
+            <p className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+              {lang === 'ml' ? 'നോട്ടിഫിക്കേഷനുകൾ' : 'Notifications'}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {enabled
+                ? lang === 'ml'
+                  ? '1 പവൻ & 1 ഗ്രാം അലേർട്ടുകൾ ഓൺ'
+                  : 'ON — Tracks both 1 Pavan & 1 Gram'
+                : lang === 'ml'
+                  ? 'എല്ലാ അലേർട്ടുകളും ഓഫ്'
+                  : 'OFF — Alerts muted'}
+            </p>
           </div>
-
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <label htmlFor="target-price-input" className="font-semibold text-slate-700 dark:text-slate-300">
-                {lang === 'ml' ? 'ലക്ഷ്യ വില (₹)' : 'Target Rate (₹)'}
-              </label>
-              <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-                {lang === 'ml' ? 'നിലവിൽ:' : 'Current:'} {formatInr(currentRateForUnit)}
-              </span>
-            </div>
-            <input
-              id="target-price-input"
-              type="number"
-              min="1"
-              step={unit === 'pavan' ? 100 : 10}
-              value={targetInput}
-              onChange={(e) => setTargetInput(e.target.value)}
-              className="mt-1.5 w-full min-h-[42px] rounded-xl border border-slate-900/12 bg-white/85 px-3 py-2 font-mono-nums text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => handleToggleMaster(!enabled)}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+              enabled ? 'bg-amber-600 dark:bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                enabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
             />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="mt-3 space-y-3">
+          {/* Individual Triggers */}
+          <div
+            className={`space-y-2 transition-opacity ${
+              enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'
+            }`}
+          >
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/8 bg-white/55 px-3 py-2 text-xs dark:border-white/10 dark:bg-white/5 cursor-pointer">
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-white inline-flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  {lang === 'ml' ? 'വില മാറുമ്പോൾ തൽക്ഷണ അലേർട്ട്' : 'Instant Rate Change Alert'}
+                </p>
+                <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                  🟢 ▲ {lang === 'ml' ? 'കൂടിയാൽ' : 'Rise'} / 🔴 ▼ {lang === 'ml' ? 'കുറഞ്ഞാൽ' : 'Drop'} (1 Pavan & 1g)
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={notifyOnPriceChange}
+                onChange={(e) => setNotifyOnPriceChange(e.target.checked)}
+                className="h-4 w-4 accent-amber-600"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/8 bg-white/55 px-3 py-2 text-xs dark:border-white/10 dark:bg-white/5 cursor-pointer">
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  {lang === 'ml' ? 'ദിവസേനയുള്ള വില അലേർട്ട്' : 'Daily Rate Update Alert'}
+                </p>
+                <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                  {lang === 'ml'
+                    ? 'ഓരോ ദിവസത്തെ 1 പവൻ & 1 ഗ്രാം വിലയും അറിയിക്കും'
+                    : 'Daily summary with 1 Pavan & 1 Gram + change badge'}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={notifyDailySummary}
+                onChange={(e) => setNotifyDailySummary(e.target.checked)}
+                className="h-4 w-4 accent-amber-600"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/8 bg-white/55 px-3 py-2 text-xs dark:border-white/10 dark:bg-white/5 cursor-pointer">
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  {lang === 'ml' ? 'ലക്ഷ്യ വില അലേർട്ട്' : 'Custom Price Target Alert'}
+                </p>
+                <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                  {lang === 'ml'
+                    ? 'നിശ്ചയിച്ച വിലയിലെത്തുമ്പോൾ അറിയിപ്പ്'
+                    : 'Alert when rate crosses your target price'}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={targetEnabled}
+                onChange={(e) => setTargetEnabled(e.target.checked)}
+                className="h-4 w-4 accent-amber-600"
+              />
+            </label>
+
+            {targetEnabled && (
+              <div className="rounded-2xl border border-amber-600/20 bg-amber-500/5 p-3 space-y-2.5 dark:border-amber-400/20">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="liquid-segmented grid grid-cols-2 rounded-xl p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleUnitChange('pavan')}
+                      className={`min-h-[32px] rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        unit === 'pavan'
+                          ? 'liquid-pill-active text-slate-900 dark:text-white'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      1 Pavan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUnitChange('gram')}
+                      className={`min-h-[32px] rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        unit === 'gram'
+                          ? 'liquid-pill-active text-slate-900 dark:text-white'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      1 Gram
+                    </button>
+                  </div>
+
+                  <div className="liquid-segmented grid grid-cols-2 rounded-xl p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setDirection('below')}
+                      className={`min-h-[32px] inline-flex items-center justify-center gap-0.5 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        direction === 'below'
+                          ? 'liquid-pill-active text-rose-700 dark:text-rose-400'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <ArrowDownRight className="h-3 w-3" />
+                      ≤ Drop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDirection('above')}
+                      className={`min-h-[32px] inline-flex items-center justify-center gap-0.5 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        direction === 'above'
+                          ? 'liquid-pill-active text-emerald-700 dark:text-emerald-400'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <ArrowUpRight className="h-3 w-3" />
+                      ≥ Rise
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <label htmlFor="target-price-input" className="font-semibold text-slate-700 dark:text-slate-300">
+                      {lang === 'ml' ? 'ലക്ഷ്യ വില (₹)' : 'Target Rate (₹)'}
+                    </label>
+                    <span className="text-slate-500 dark:text-slate-400 tabular-nums">
+                      Current: {formatInr(currentRateForUnit)}
+                    </span>
+                  </div>
+                  <input
+                    id="target-price-input"
+                    type="number"
+                    min="1"
+                    step={unit === 'pavan' ? 100 : 10}
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/85 px-3 py-1.5 font-mono-nums text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-slate-900/8 bg-white/55 px-3 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-            <span className="text-slate-600 dark:text-slate-300">
-              {lang === 'ml' ? 'ബ്രൗസർ അനുമതി:' : 'Notifications:'}{' '}
-              <strong className="text-slate-900 dark:text-white capitalize">{permission}</strong>
-            </span>
+          {/* Delivery Channel Status + Test */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-900/8 bg-white/55 px-3 py-2 text-[11px] dark:border-white/10 dark:bg-white/5">
+            <div className="min-w-0">{renderCapabilityBadge()}</div>
             <button
               type="button"
               onClick={handleTestNotification}
-              className="font-semibold text-amber-700 hover:underline dark:text-amber-400 cursor-pointer"
+              className="font-semibold text-amber-700 hover:underline dark:text-amber-400 shrink-0 cursor-pointer"
             >
-              {lang === 'ml' ? 'ടെസ്റ്റ്' : 'Test Alert'}
+              {lang === 'ml' ? 'ടെസ്റ്റ് അലേർട്ട്' : 'Test Alert'}
             </button>
           </div>
 
-          {savedConfig?.enabled && (
-            <div className="flex items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
-              <span className="inline-flex items-center gap-1.5 font-medium tabular-nums">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Active: ≤ {formatInr(savedConfig.targetPrice)} /{' '}
-                {savedConfig.unit === 'pavan' ? 'Pavan' : 'g'}
+          {/* iPhone Shortcut / API Automation Copy */}
+          <div className="rounded-xl border border-slate-900/8 bg-white/50 p-2.5 text-[11px] dark:border-white/10 dark:bg-white/5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                iPhone Shortcut / API Automation URL
               </span>
               <button
                 type="button"
-                onClick={handleRemoveAlert}
-                className="inline-flex items-center gap-1 font-semibold text-rose-700 hover:underline dark:text-rose-400 cursor-pointer"
+                onClick={handleCopyShortcutUrl}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-900/12 bg-white/80 px-2 py-1 font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
               >
-                <BellOff className="h-3 w-3" aria-hidden="true" />
-                <span>{lang === 'ml' ? 'നീക്കുക' : 'Disable'}</span>
+                {copiedShortcut ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                <span>{copiedShortcut ? 'Copied' : 'Copy URL'}</span>
               </button>
             </div>
-          )}
+            <p className="mt-1 text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
+              Use Apple <strong>Shortcuts → Automation (Daily 9:45 AM &amp; 4:00 PM)</strong> → <em>Get Contents of URL</em> → <em>Show Notification</em> for Lock-Screen alerts even when the app is closed.
+            </p>
+          </div>
 
           {feedback && (
             <p className="text-xs font-medium text-amber-700 dark:text-amber-400">{feedback}</p>
           )}
 
-          <button
-            type="submit"
-            className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:text-slate-950 cursor-pointer"
-          >
-            <Bell className="h-4 w-4" aria-hidden="true" />
-            <span>
-              {lang === 'ml' ? 'അലേർട്ട് സജീവമാക്കുക' : 'Save Target & Enable Alerts'}
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              className="flex-1 min-h-[42px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:text-slate-950 cursor-pointer"
+            >
+              {enabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+              <span>
+                {enabled
+                  ? lang === 'ml'
+                    ? 'അലേർട്ടുകൾ സേവ് ചെയ്യുക'
+                    : 'Save & Enable Alerts'
+                  : lang === 'ml'
+                    ? 'അലേർട്ട് ഓഫ് സേവ് ചെയ്യുക'
+                    : 'Save (Muted)'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={handleResetAll}
+              title="Reset alerts"
+              className="min-h-[42px] px-3 rounded-xl border border-slate-900/12 bg-white/70 text-xs font-semibold text-slate-700 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 cursor-pointer"
+            >
+              {lang === 'ml' ? 'നീക്കുക' : 'Clear'}
+            </button>
+          </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

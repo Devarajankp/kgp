@@ -1,5 +1,6 @@
 import {Check, Copy, Download, Moon, Share2, Sun, X} from 'lucide-react';
 import React, {useEffect, useMemo, useState} from 'react';
+import {createPortal} from 'react-dom';
 import type {AppLanguage, LatestGoldResponse} from '../types/gold';
 import {formatInr, formatSignedInr} from '../utils/format';
 import {buildShareText, renderShareCardPng} from '../utils/shareCard';
@@ -19,7 +20,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
 
-  // Sync default card color with the active app Day/Night theme whenever opened
   useEffect(() => {
     if (open) {
       setCardTheme(theme);
@@ -44,7 +44,67 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
     return data.entries.slice(-5).reverse();
   }, [data]);
 
-  if (!open || !data) return null;
+  const miniChart = useMemo(() => {
+    const entries = data?.entries || [];
+    if (entries.length < 2) return null;
+
+    const minVal = Math.min(...entries.map((e) => e.pavan));
+    const maxVal = Math.max(...entries.map((e) => e.pavan));
+    const span = Math.max(1, maxVal - minVal);
+    const padLow = Math.round(minVal - span * 0.12);
+    const padHigh = Math.round(maxVal + span * 0.12);
+    const padSpan = Math.max(1, padHigh - padLow);
+
+    const w = 320;
+    const h = 92;
+    const left = 54;
+    const right = 8;
+    const top = 10;
+    const bottom = 18;
+    const innerW = w - left - right;
+    const innerH = h - top - bottom;
+
+    let peakIdx = 0;
+    let lowIdx = 0;
+    const pts = entries.map((e, idx) => {
+      if (e.pavan >= entries[peakIdx].pavan) peakIdx = idx;
+      if (e.pavan <= entries[lowIdx].pavan) lowIdx = idx;
+      const x = left + (idx / Math.max(1, entries.length - 1)) * innerW;
+      const y = top + innerH - ((e.pavan - padLow) / padSpan) * innerH;
+      return {x, y, entry: e};
+    });
+
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${(top + innerH).toFixed(1)} L${pts[0].x.toFixed(1)},${(top + innerH).toFixed(1)} Z`;
+    const midIdx = Math.floor((entries.length - 1) / 2);
+    const monthNet = entries[entries.length - 1].pavan - entries[0].pavan;
+
+    return {
+      w,
+      h,
+      left,
+      top,
+      innerW,
+      innerH,
+      padLow,
+      padHigh,
+      minVal,
+      maxVal,
+      peakIdx,
+      lowIdx,
+      midIdx,
+      monthNet,
+      pts,
+      linePath,
+      areaPath,
+      firstLabel: entries[0].dateLabel.replace(/-\d{2}$/, ''),
+      midLabel: entries[midIdx].dateLabel.replace(/-\d{2}$/, ''),
+      lastLabel: entries[entries.length - 1].dateLabel.replace(/-\d{2}$/, ''),
+      count: entries.length,
+    };
+  }, [data]);
+
+  if (!open || !data || typeof document === 'undefined') return null;
 
   const isUp = data.current.direction === 'up';
   const isDown = data.current.direction === 'down';
@@ -116,9 +176,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
     setStatusMsg(lang === 'ml' ? 'ഷെയർ കാർഡ് സേവ് ചെയ്തു!' : 'Saved share card PNG!');
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-3 sm:p-4"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-modal-title"
@@ -126,7 +186,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="liquid-glass w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100">
+      <div className="liquid-glass w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100 shadow-2xl">
         <div className="flex items-center justify-between gap-2">
           <h2 id="share-modal-title" className="font-display text-base sm:text-lg font-bold">
             {lang === 'ml' ? 'സ്വർണ്ണ വില പങ്കിടുക' : 'Share Gold Rate Card'}
@@ -152,7 +212,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
           </div>
         </div>
 
-        {/* Theme-Matched Brushed Gold Share Card Preview (Preserves Gold Shimmer & Fraunces Shine + Recent Trend) */}
+        {/* Theme-Matched Brushed Gold Share Card Preview (Tiles + Miniature Monthly Chart + Recent 5 Days) */}
         <div
           className={`mt-3 overflow-hidden rounded-2xl border p-3.5 sm:p-4 shadow-xl transition-colors ${
             isDarkCard
@@ -181,7 +241,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
             </span>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
+          <div className="mt-2.5 grid grid-cols-2 gap-2.5">
             {/* 1 Pavan Gold Metallic Shimmer Tile */}
             <div
               className={`gold-shimmer rounded-xl border p-2.5 sm:p-3 ${
@@ -198,7 +258,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
                 {lang === 'ml' ? '1 പവൻ (8g · 22K)' : '1 PAVAN (8g · 22K)'}
               </div>
               <div
-                className={`mt-1 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
+                className={`mt-0.5 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
                   isDarkCard
                     ? 'bg-gradient-to-r from-[#f5d07a] via-[#fff2b8] to-[#efb849] bg-clip-text text-transparent'
                     : 'bg-gradient-to-r from-[#7c4706] via-[#c48112] to-[#7c4706] bg-clip-text text-transparent'
@@ -207,7 +267,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
                 {formatInr(data.current.pavan22k)}
               </div>
               <div
-                className={`mt-1 text-[10.5px] sm:text-[11px] font-semibold tabular-nums ${
+                className={`mt-0.5 text-[10.5px] sm:text-[11px] font-semibold tabular-nums ${
                   isUp
                     ? isDarkCard
                       ? 'text-emerald-400'
@@ -241,14 +301,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
                 {lang === 'ml' ? '1 ഗ്രാം (22K)' : '1 GRAM (22K)'}
               </div>
               <div
-                className={`mt-1 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
+                className={`mt-0.5 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
                   isDarkCard ? 'text-white' : 'text-slate-900'
                 }`}
               >
                 {formatInr(data.current.gram22k)}
               </div>
               <div
-                className={`mt-1 text-[10px] tabular-nums ${
+                className={`mt-0.5 text-[10px] tabular-nums ${
                   isDarkCard ? 'text-slate-300' : 'text-slate-600'
                 }`}
               >
@@ -256,6 +316,160 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
               </div>
             </div>
           </div>
+
+          {/* Miniature Active-Month Trend Chart */}
+          {miniChart && (
+            <div
+              className={`mt-2.5 rounded-xl border p-2.5 ${
+                isDarkCard
+                  ? 'border-amber-400/20 bg-white/[0.035]'
+                  : 'border-amber-700/18 bg-white/60'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] font-semibold mb-1">
+                <span className={isDarkCard ? 'text-amber-300' : 'text-amber-800'}>
+                  {data.monthLabel} ({miniChart.count} updates)
+                </span>
+                <span
+                  className={`tabular-nums ${
+                    miniChart.monthNet > 0
+                      ? isDarkCard
+                        ? 'text-emerald-400'
+                        : 'text-emerald-700'
+                      : miniChart.monthNet < 0
+                        ? isDarkCard
+                          ? 'text-rose-400'
+                          : 'text-rose-700'
+                        : isDarkCard
+                          ? 'text-slate-400'
+                          : 'text-slate-600'
+                  }`}
+                >
+                  {miniChart.monthNet === 0
+                    ? 'Net: Steady'
+                    : `Net: ${miniChart.monthNet > 0 ? '▲' : '▼'} ${formatSignedInr(miniChart.monthNet)}`}
+                </span>
+              </div>
+
+              <svg
+                viewBox={`0 0 ${miniChart.w} ${miniChart.h}`}
+                className="w-full h-24 overflow-visible"
+                role="img"
+                aria-label={`${data.monthLabel} miniature gold price chart`}
+              >
+                <defs>
+                  <linearGradient id="shareMiniAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={isDarkCard ? '#efb849' : '#b87714'} stopOpacity="0.35" />
+                    <stop offset="100%" stopColor={isDarkCard ? '#efb849' : '#b87714'} stopOpacity="0.01" />
+                  </linearGradient>
+                </defs>
+
+                {[0, 0.5, 1].map((tRatio, idx) => {
+                  const y = miniChart.top + tRatio * miniChart.innerH;
+                  const val = Math.round(miniChart.padHigh - tRatio * (miniChart.padHigh - miniChart.padLow));
+                  return (
+                    <g key={idx}>
+                      <line
+                        x1={miniChart.left}
+                        x2={miniChart.left + miniChart.innerW}
+                        y1={y}
+                        y2={y}
+                        stroke={isDarkCard ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)'}
+                        strokeDasharray="3 3"
+                        strokeWidth="0.75"
+                      />
+                      <text
+                        x={miniChart.left - 4}
+                        y={y + 3}
+                        textAnchor="end"
+                        fill={isDarkCard ? 'rgba(241,245,249,0.6)' : 'rgba(30,41,59,0.6)'}
+                        fontSize="7.5"
+                        fontFamily="JetBrains Mono, monospace"
+                      >
+                        {formatInr(val)}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                <path d={miniChart.areaPath} fill="url(#shareMiniAreaGrad)" />
+                <path
+                  d={miniChart.linePath}
+                  fill="none"
+                  stroke={isDarkCard ? '#efb849' : '#b87714'}
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+
+                {/* Peak, Low, and Latest Dots */}
+                <circle
+                  cx={miniChart.pts[miniChart.peakIdx].x}
+                  cy={miniChart.pts[miniChart.peakIdx].y}
+                  r="3"
+                  fill="#10b981"
+                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
+                  strokeWidth="1"
+                />
+                <circle
+                  cx={miniChart.pts[miniChart.lowIdx].x}
+                  cy={miniChart.pts[miniChart.lowIdx].y}
+                  r="3"
+                  fill="#f43f5e"
+                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
+                  strokeWidth="1"
+                />
+                <circle
+                  cx={miniChart.pts[miniChart.pts.length - 1].x}
+                  cy={miniChart.pts[miniChart.pts.length - 1].y}
+                  r="3.2"
+                  fill={isDarkCard ? '#fde047' : '#d97706'}
+                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
+                  strokeWidth="1"
+                />
+
+                {/* X-Axis Labels */}
+                <text
+                  x={miniChart.left}
+                  y={miniChart.top + miniChart.innerH + 12}
+                  textAnchor="start"
+                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
+                  fontSize="7.5"
+                >
+                  {miniChart.firstLabel}
+                </text>
+                <text
+                  x={miniChart.pts[miniChart.midIdx].x}
+                  y={miniChart.top + miniChart.innerH + 12}
+                  textAnchor="middle"
+                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
+                  fontSize="7.5"
+                >
+                  {miniChart.midLabel}
+                </text>
+                <text
+                  x={miniChart.left + miniChart.innerW}
+                  y={miniChart.top + miniChart.innerH + 12}
+                  textAnchor="end"
+                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
+                  fontSize="7.5"
+                >
+                  {miniChart.lastLabel}
+                </text>
+              </svg>
+
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[9.5px] tabular-nums">
+                <span className={isDarkCard ? 'text-emerald-400' : 'text-emerald-700'}>
+                  ● Peak ({miniChart.pts[miniChart.peakIdx].entry.dateLabel.replace(/-\d{2}$/, '')}):{' '}
+                  {formatInr(miniChart.maxVal)}
+                </span>
+                <span className={isDarkCard ? 'text-rose-400' : 'text-rose-700'}>
+                  ● Low ({miniChart.pts[miniChart.lowIdx].entry.dateLabel.replace(/-\d{2}$/, '')}):{' '}
+                  {formatInr(miniChart.minVal)}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Recent 5-Day Price History Strip */}
           {recentEntries.length > 0 && (
@@ -266,15 +480,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
                   : 'border-slate-900/10 bg-white/55'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 text-[10px] font-semibold mb-1.5">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-semibold mb-1">
                 <span className={isDarkCard ? 'text-amber-300' : 'text-amber-800'}>
                   {lang === 'ml' ? 'സമീപകാല മാറ്റങ്ങൾ (1 പവൻ)' : 'Recent Trend (1 Pavan)'}
                 </span>
-                {data.monthlyHigh && data.monthlyLow && (
-                  <span className={isDarkCard ? 'text-slate-400' : 'text-slate-500'}>
-                    H: {formatInr(data.monthlyHigh.pavan)} · L: {formatInr(data.monthlyLow.pavan)}
-                  </span>
-                )}
               </div>
 
               <div
@@ -383,6 +592,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

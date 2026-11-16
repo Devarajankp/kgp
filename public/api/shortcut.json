@@ -13,19 +13,24 @@
   "gram22kFormatted": "₹12,540",
   "changePavan": -600,
   "changeGram": -75,
+  "changePavanFormatted": "▼ -₹600",
+  "changeGramFormatted": "▼ -₹75/g",
   "changePercent": -0.59,
   "direction": "down",
+  "trendSymbol": "▼",
+  "colorEmoji": "🔴",
+  "trendColor": "red",
   "trend": "Downward",
   "monthlyHighPavan": 107080,
   "monthlyHighDate": "5th and 6th November 2026 (Morning)",
   "monthlyLowPavan": 100320,
   "monthlyLowDate": "16th November 2026",
-  "spot22kGramInr": 10703.98,
-  "spot24kGramInr": 11685.57,
-  "spotChangePercent": -1.31,
-  "usdInr": 93.993,
+  "spot22kGramInr": 10691.46,
+  "spot24kGramInr": 11671.9,
+  "spotChangePercent": -1.43,
+  "usdInr": 93.929,
   "outlookSignal": "wait",
-  "outlookNote": "Global spot is softer (-1.31%); if flexible, check tomorrow's 9:30 AM IST fix.",
+  "outlookNote": "Global spot is softer (-1.43%); if flexible, check tomorrow's 9:30 AM IST fix.",
   "recent5Days": [
     {
       "date": "16-Nov-26",
@@ -33,7 +38,10 @@
       "pavan": 100320,
       "gram": 12540,
       "changePavan": -600,
-      "direction": "down"
+      "changeGram": -75,
+      "direction": "down",
+      "trendSymbol": "▼",
+      "colorEmoji": "🔴"
     },
     {
       "date": "15-Nov-26",
@@ -41,7 +49,10 @@
       "pavan": 100920,
       "gram": 12615,
       "changePavan": 0,
-      "direction": "flat"
+      "changeGram": 0,
+      "direction": "flat",
+      "trendSymbol": "●",
+      "colorEmoji": "🟡"
     },
     {
       "date": "14-Nov-26",
@@ -49,7 +60,10 @@
       "pavan": 100920,
       "gram": 12615,
       "changePavan": 200,
-      "direction": "up"
+      "changeGram": 25,
+      "direction": "up",
+      "trendSymbol": "▲",
+      "colorEmoji": "🟢"
     },
     {
       "date": "13-Nov-26",
@@ -57,7 +71,10 @@
       "pavan": 100720,
       "gram": 12590,
       "changePavan": -840,
-      "direction": "down"
+      "changeGram": -105,
+      "direction": "down",
+      "trendSymbol": "▼",
+      "colorEmoji": "🔴"
     },
     {
       "date": "13-Nov-26",
@@ -65,9 +82,14 @@
       "pavan": 101560,
       "gram": 12695,
       "changePavan": -960,
-      "direction": "down"
+      "changeGram": -120,
+      "direction": "down",
+      "trendSymbol": "▼",
+      "colorEmoji": "🔴"
     }
   ],
-  "summaryText": "Kerala 22K Gold (16-Nov-26): 1 Pavan ₹1,00,320 (▼ -₹600), 1 Gram ₹12,540. 24K est: ₹13,680/g. Updated 16 Nov 2026, 09:28 am IST.",
-  "summaryMalayalam": "കേരള 22K സ്വർണ്ണ വില (16-Nov-26): 1 പവൻ ₹1,00,320 (▼ -₹600), 1 ഗ്രാം ₹12,540."
+  "notificationTitle": "🔴 ▼ Kerala 22K Gold Down · 16-Nov-26",
+  "notificationBody": "1 Pavan: ₹1,00,320 (▼ -₹600) | 1 Gram: ₹12,540 (▼ -₹75/g) · Morning Update",
+  "summaryText": "🔴 ▼ Kerala 22K Gold Down · 16-Nov-26\n1 Pavan: ₹1,00,320 (▼ -₹600) | 1 Gram: ₹12,540 (▼ -₹75/g) · Morning Update",
+  "summaryMalayalam": "🔴 ▼ കേരള 22K സ്വർണ്ണ വില (16-Nov-26)\n1 പവൻ: ₹1,00,320 (▼ -₹600) | 1 ഗ്രാം: ₹12,540 (▼ -₹75/g)"
 }

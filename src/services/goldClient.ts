@@ -183,8 +183,19 @@ export async function fetchLiveSpotMarket(): Promise<LiveSpotMarketData | null> 
       return (await res.json()) as LiveSpotMarketData;
     }
   } catch {
-    // Graceful null fallback when offline or static host
+    // Live backend unavailable; try daily synced static snapshot below
   }
+
+  try {
+    const staticRes = await fetch(`${import.meta.env.BASE_URL}api/spot.json`, {cache: 'no-cache'});
+    const contentType = staticRes.headers.get('content-type') || '';
+    if (staticRes.ok && contentType.includes('application/json')) {
+      return (await staticRes.json()) as LiveSpotMarketData;
+    }
+  } catch {
+    // Offline fallback
+  }
+
   return null;
 }
 

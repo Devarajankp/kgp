@@ -3,6 +3,7 @@ build/
 dist/
 dev-dist/
 coverage/
+.aistudio/
 .DS_Store
 *.log
 .env*

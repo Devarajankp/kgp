@@ -9,15 +9,23 @@ export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isIOSSafari, setIsIOSSafari] = useState(false);
 
   useEffect(() => {
-    const isStandalone =
+    const checkStandalone = () =>
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as {standalone?: boolean}).standalone === true;
-    setIsInstalled(isStandalone);
 
-    const ua = window.navigator.userAgent.toLowerCase();
-    setIsIOS(/iphone|ipad|ipod/.test(ua));
+    setIsInstalled(checkStandalone());
+
+    const ua = window.navigator.userAgent;
+    const isAppleTouchDevice =
+      /iPhone|iPad|iPod/i.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOS(isAppleTouchDevice);
+
+    const isThirdPartyIOSBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
+    setIsIOSSafari(isAppleTouchDevice && !isThirdPartyIOSBrowser);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -29,11 +37,19 @@ export function usePWAInstall() {
       setDeferredPrompt(null);
     };
 
+    const displayModeMq = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = () => {
+      setIsInstalled(checkStandalone());
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+    displayModeMq.addEventListener?.('change', handleDisplayModeChange);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      displayModeMq.removeEventListener?.('change', handleDisplayModeChange);
     };
   }, []);
 
@@ -53,6 +69,7 @@ export function usePWAInstall() {
     isInstallable: !!deferredPrompt,
     isInstalled,
     isIOS,
+    isIOSSafari,
     install,
   };
 }

@@ -11,7 +11,7 @@
         "url": "https://www.keralagold.com/daily-gold-prices.htm",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 562,
+        "latencyMs": 461,
         "detail": "Active · 20 records in November 2026",
         "supportsHistory": true
       },
@@ -21,7 +21,7 @@
         "url": "https://www.livegoldkerala.com/",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 994,
+        "latencyMs": 927,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": true
       },
@@ -31,7 +31,7 @@
         "url": "https://www.goodreturns.in/gold-rates/kerala.html",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 111,
+        "latencyMs": 434,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       },
@@ -41,7 +41,7 @@
         "url": "https://groww.in/gold-rates/gold-rate-today-in-kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 619,
+        "latencyMs": 621,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       },
@@ -51,7 +51,7 @@
         "url": "https://www.bankbazaar.com/gold-rate-kerala.html",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 287,
+        "latencyMs": 222,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       },
@@ -61,7 +61,7 @@
         "url": "https://www.josalukkasonline.com/gold-rate-today/kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 579,
+        "latencyMs": 705,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       },
@@ -71,7 +71,7 @@
         "url": "https://store.kalyanjewellers.net/gold-rate/kerala/en",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 1024,
+        "latencyMs": 1003,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       },
@@ -81,12 +81,12 @@
         "url": "https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 381,
+        "latencyMs": 1403,
         "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
         "supportsHistory": false
       }
     ],
-    "fetchedAt": "2026-11-16T13:25:54.570Z",
+    "fetchedAt": "2026-11-16T15:36:54.172Z",
     "serverLastModified": "Mon, 16 Nov 2026 03:58:37 GMT",
     "updatedTimeIst": "16 Nov 2026, 09:28 am IST",
     "scheduleLabel": "Morning Update",
@@ -409,7 +409,7 @@
     "subtitle": "Mid-month (15th) benchmark prices for 1 Pavan & 1 Gram in Kerala",
     "sourceName": "KeralaGold.com",
     "sourceUrl": "https://www.keralagold.com/monthly-gold-prices.htm",
-    "fetchedAt": "2026-11-16T13:25:54.518Z",
+    "fetchedAt": "2026-11-16T15:36:54.220Z",
     "serverLastModified": "Sun, 15 Nov 2026 00:55:18 GMT",
     "high": {
       "pavan": 131160,
@@ -551,7 +551,7 @@
     "subtitle": "Annual 31-March benchmark prices per Pavan (8g, 22K) and per Gram",
     "sourceName": "KeralaGold.com",
     "sourceUrl": "https://www.keralagold.com/yearly-gold-prices.htm",
-    "fetchedAt": "2026-11-16T13:25:54.483Z",
+    "fetchedAt": "2026-11-16T15:36:54.270Z",
     "serverLastModified": "Wed, 01 Apr 2026 01:14:39 GMT",
     "high": {
       "pavan": 109640,

@@ -18,7 +18,8 @@ import type {
   PreferredSource,
   SourceProbeResult,
 } from '../types/gold';
-import type {PriceAlertConfig} from '../services/priceAlerts';
+import {X} from 'lucide-react';
+import type {ActiveAlertEvent, PriceAlertConfig} from '../services/priceAlerts';
 import {formatInr, formatSignedInr} from '../utils/format';
 import {MarketOutlookTile} from './MarketOutlookTile';
 import {PriceChart, type ChartPoint} from './PriceChart';
@@ -34,6 +35,8 @@ interface LivePriceTabProps {
   preferredSource: PreferredSource;
   alertConfig: PriceAlertConfig | null;
   alertMatchedValue: number | null;
+  activeAlertEvent: ActiveAlertEvent | null;
+  onDismissAlertEvent: () => void;
   onOpenAlertModal: () => void;
   onSelectSource: (source: PreferredSource) => void;
   onRefresh: (probeSources?: boolean) => void;
@@ -78,6 +81,8 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
   preferredSource,
   alertConfig,
   alertMatchedValue,
+  activeAlertEvent,
+  onDismissAlertEvent,
   onOpenAlertModal,
   onSelectSource,
   onRefresh,
@@ -156,7 +161,58 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
 
   return (
     <div className="space-y-3 sm:space-y-5">
-      {alertConfig?.enabled && alertMatchedValue !== null && (
+      {activeAlertEvent && (
+        <div
+          role="status"
+          className={`liquid-glass rounded-2xl border px-3.5 py-2.5 text-xs ${
+            activeAlertEvent.trendDirection === 'up'
+              ? 'border-emerald-500/35 bg-emerald-500/12 text-emerald-950 dark:text-emerald-200'
+              : activeAlertEvent.trendDirection === 'down'
+                ? 'border-rose-500/35 bg-rose-500/12 text-rose-950 dark:text-rose-200'
+                : 'border-amber-500/35 bg-amber-500/12 text-amber-950 dark:text-amber-200'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 space-y-0.5">
+              <p className="inline-flex items-center gap-1.5 font-bold">
+                <span
+                  aria-hidden="true"
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-bold text-white shrink-0 ${
+                    activeAlertEvent.trendDirection === 'up'
+                      ? 'bg-emerald-600'
+                      : activeAlertEvent.trendDirection === 'down'
+                        ? 'bg-rose-600'
+                        : 'bg-amber-600'
+                  }`}
+                >
+                  {activeAlertEvent.trendSymbol}
+                </span>
+                <span className="truncate">{activeAlertEvent.title}</span>
+              </p>
+              <p className="text-[11px] font-medium tabular-nums opacity-90">{activeAlertEvent.body}</p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onOpenAlertModal}
+                className="font-semibold underline hover:no-underline cursor-pointer"
+              >
+                {lang === 'ml' ? 'മാറ്റുക' : 'Alerts'}
+              </button>
+              <button
+                type="button"
+                onClick={onDismissAlertEvent}
+                aria-label="Dismiss alert"
+                className="rounded-lg p-1 hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!activeAlertEvent && alertConfig?.enabled && alertConfig.targetEnabled && alertMatchedValue !== null && (
         <div
           role="status"
           className="liquid-glass flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-900 dark:text-emerald-200"
@@ -164,8 +220,8 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
           <span className="inline-flex items-center gap-2 font-semibold tabular-nums">
             <BellRing className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
             {lang === 'ml'
-              ? `ലക്ഷ്യ വിലയിലെത്തി! നിലവിൽ ${formatInr(alertMatchedValue)} (ലക്ഷ്യം ≤ ${formatInr(alertConfig.targetPrice)})`
-              : `Target Price Reached! Now ${formatInr(alertMatchedValue)} (Target ≤ ${formatInr(alertConfig.targetPrice)})`}
+              ? `ലക്ഷ്യ വിലയിലെത്തി! 1 പവൻ: ${formatInr(data.current.pavan22k)} · 1 ഗ്രാം: ${formatInr(data.current.gram22k)}`
+              : `Target Met! 1 Pavan: ${formatInr(data.current.pavan22k)} · 1 Gram: ${formatInr(data.current.gram22k)} (Target ${alertConfig.direction === 'above' ? '≥' : '≤'} ${formatInr(alertConfig.targetPrice)})`}
           </span>
           <button
             type="button"

@@ -272,12 +272,12 @@
     },
     "/api/gold/alert-check": {
       "get": {
-        "summary": "Check whether today’s Kerala 22K rate is at or below a specified target price (ideal for iPhone daily Automations)",
+        "summary": "Evaluate daily rate changes (1 Pavan & 1 Gram with color-coded trend symbols) and optional custom target price for iPhone Shortcuts & push pipelines",
         "parameters": [
           {
             "name": "target",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "number"
             }
@@ -293,11 +293,54 @@
               ],
               "default": "pavan"
             }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "below",
+                "above"
+              ],
+              "default": "below"
+            }
+          },
+          {
+            "name": "prevPavan",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "text"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "ml"
+              ],
+              "default": "en"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Target alert evaluation JSON"
+            "description": "Dual-unit alert evaluation JSON or plain-text notification"
           }
         }
       }

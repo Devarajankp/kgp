@@ -242,11 +242,17 @@ export function buildShortcutPayload(
   spot: LiveSpotMarketData | null,
 ) {
   const {current} = latest;
-  const arrow = current.direction === 'up' ? '▲' : current.direction === 'down' ? '▼' : '•';
+  const arrow = current.direction === 'up' ? '▲' : current.direction === 'down' ? '▼' : '●';
+  const colorEmoji = current.direction === 'up' ? '🟢' : current.direction === 'down' ? '🔴' : '🟡';
+  const trendColor = current.direction === 'up' ? 'green' : current.direction === 'down' ? 'red' : 'amber';
   const chgText =
     current.changePavan === 0
-      ? 'No change'
+      ? '● No change'
       : `${arrow} ${current.changePavan > 0 ? '+' : '-'}₹${Math.abs(current.changePavan).toLocaleString('en-IN')}`;
+  const chgGramText =
+    current.changeGram === 0
+      ? '● 0'
+      : `${arrow} ${current.changeGram > 0 ? '+' : '-'}₹${Math.abs(current.changeGram).toLocaleString('en-IN')}/g`;
 
   const recent5Days = (latest.entries || [])
     .slice(-5)
@@ -257,7 +263,10 @@ export function buildShortcutPayload(
       pavan: e.pavan,
       gram: e.gram,
       changePavan: e.changePavan,
+      changeGram: e.changeGram,
       direction: e.direction,
+      trendSymbol: e.direction === 'up' ? '▲' : e.direction === 'down' ? '▼' : '●',
+      colorEmoji: e.direction === 'up' ? '🟢' : e.direction === 'down' ? '🔴' : '🟡',
     }));
 
   let outlookSignal: 'wait' | 'buy_lock' | 'steady' = 'steady';
@@ -272,17 +281,17 @@ export function buildShortcutPayload(
     }
   }
 
-  const summaryText =
-    `Kerala 22K Gold (${current.dateLabel}): ` +
-    `1 Pavan ${formatInrServer(current.pavan22k)} (${chgText}), ` +
-    `1 Gram ${formatInrServer(current.gram22k)}. ` +
-    `24K est: ${formatInrServer(current.gram24kEstimate)}/g. ` +
-    `Updated ${latest.updatedTimeIst}.`;
+  const notificationTitle =
+    `${colorEmoji} ${arrow} Kerala 22K Gold ${current.direction === 'up' ? 'Up' : current.direction === 'down' ? 'Down' : 'Update'} · ${current.dateLabel}`;
+  const notificationBody =
+    `1 Pavan: ${formatInrServer(current.pavan22k)} (${chgText}) | ` +
+    `1 Gram: ${formatInrServer(current.gram22k)} (${chgGramText}) · ${latest.scheduleLabel}`;
+
+  const summaryText = `${notificationTitle}\n${notificationBody}`;
 
   const summaryMalayalam =
-    `കേരള 22K സ്വർണ്ണ വില (${current.dateLabel}): ` +
-    `1 പവൻ ${formatInrServer(current.pavan22k)} (${chgText}), ` +
-    `1 ഗ്രാം ${formatInrServer(current.gram22k)}.`;
+    `${colorEmoji} ${arrow} കേരള 22K സ്വർണ്ണ വില (${current.dateLabel})\n` +
+    `1 പവൻ: ${formatInrServer(current.pavan22k)} (${chgText}) | 1 ഗ്രാം: ${formatInrServer(current.gram22k)} (${chgGramText})`;
 
   return {
     date: current.dateLabel,
@@ -299,8 +308,13 @@ export function buildShortcutPayload(
     gram22kFormatted: formatInrServer(current.gram22k),
     changePavan: current.changePavan,
     changeGram: current.changeGram,
+    changePavanFormatted: chgText,
+    changeGramFormatted: chgGramText,
     changePercent: current.changePercent,
     direction: current.direction,
+    trendSymbol: arrow,
+    colorEmoji,
+    trendColor,
     trend: current.trendLabel,
     monthlyHighPavan: latest.monthlyHigh?.pavan ?? null,
     monthlyHighDate: latest.monthlyHigh?.dateLabel ?? null,
@@ -313,6 +327,8 @@ export function buildShortcutPayload(
     outlookSignal,
     outlookNote,
     recent5Days,
+    notificationTitle,
+    notificationBody,
     summaryText,
     summaryMalayalam,
   };
@@ -416,12 +432,17 @@ export function buildOpenApiSpec(baseUrl: string) {
       },
       '/api/gold/alert-check': {
         get: {
-          summary: 'Check whether today’s Kerala 22K rate is at or below a specified target price (ideal for iPhone daily Automations)',
+          summary:
+            'Evaluate daily rate changes (1 Pavan & 1 Gram with color-coded trend symbols) and optional custom target price for iPhone Shortcuts & push pipelines',
           parameters: [
-            {name: 'target', in: 'query', required: true, schema: {type: 'number'}},
+            {name: 'target', in: 'query', required: false, schema: {type: 'number'}},
             {name: 'unit', in: 'query', schema: {type: 'string', enum: ['pavan', 'gram'], default: 'pavan'}},
+            {name: 'direction', in: 'query', schema: {type: 'string', enum: ['below', 'above'], default: 'below'}},
+            {name: 'prevPavan', in: 'query', schema: {type: 'number'}},
+            {name: 'format', in: 'query', schema: {type: 'string', enum: ['json', 'text'], default: 'json'}},
+            {name: 'lang', in: 'query', schema: {type: 'string', enum: ['en', 'ml'], default: 'en'}},
           ],
-          responses: {'200': {description: 'Target alert evaluation JSON'}},
+          responses: {'200': {description: 'Dual-unit alert evaluation JSON or plain-text notification'}},
         },
       },
     },

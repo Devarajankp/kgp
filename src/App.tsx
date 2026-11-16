@@ -12,8 +12,9 @@ import {TRANSLATIONS} from './i18n/translations';
 import {maybeAutoPrune} from './services/cacheDb';
 import {fetchLatestGold, fetchLiveSpotMarket} from './services/goldClient';
 import {
-  evaluateTargetPriceAlert,
+  evaluatePriceAlerts,
   readPriceAlert,
+  type ActiveAlertEvent,
   type PriceAlertConfig,
 } from './services/priceAlerts';
 import type {AppLanguage, LatestGoldResponse, LiveSpotMarketData, PreferredSource} from './types/gold';
@@ -27,7 +28,7 @@ function getInitialTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light';
   const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (saved === 'dark' || saved === 'light') return saved;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 function getInitialLang(): AppLanguage {
@@ -54,6 +55,7 @@ export default function App() {
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertConfig, setAlertConfig] = useState<PriceAlertConfig | null>(() => readPriceAlert());
   const [alertMatchedValue, setAlertMatchedValue] = useState<number | null>(null);
+  const [activeAlertEvent, setActiveAlertEvent] = useState<ActiveAlertEvent | null>(null);
 
   const t = TRANSLATIONS[lang];
 
@@ -65,6 +67,12 @@ export default function App() {
       root.classList.remove('dark');
     }
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+    const color = theme === 'dark' ? '#0B0D12' : '#F6F4EF';
+    const lightMeta = document.getElementById('theme-color-light');
+    const darkMeta = document.getElementById('theme-color-dark');
+    if (lightMeta) lightMeta.setAttribute('content', color);
+    if (darkMeta) darkMeta.setAttribute('content', color);
   }, [theme]);
 
   useEffect(() => {
@@ -72,11 +80,17 @@ export default function App() {
     window.localStorage.setItem(LANG_STORAGE_KEY, lang);
   }, [lang]);
 
-  const checkAlerts = useCallback(async (data: LatestGoldResponse) => {
-    const evalRes = await evaluateTargetPriceAlert(data);
-    setAlertConfig(evalRes.config);
-    setAlertMatchedValue(evalRes.isMatched ? evalRes.currentValue : null);
-  }, []);
+  const checkAlerts = useCallback(
+    async (data: LatestGoldResponse) => {
+      const evalRes = await evaluatePriceAlerts(data, lang);
+      setAlertConfig(evalRes.config);
+      setAlertMatchedValue(evalRes.targetMatchedNow ? evalRes.currentTargetUnitValue : null);
+      if (evalRes.event) {
+        setActiveAlertEvent(evalRes.event);
+      }
+    },
+    [lang],
+  );
 
   const loadLatest = useCallback(
     async (options?: {source?: PreferredSource; probe?: boolean; silent?: boolean}) => {
@@ -126,6 +140,24 @@ export default function App() {
       }
       await loadLatest({silent: true});
     })();
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void loadLatest({silent: true});
+      }
+    }, 10 * 60 * 1000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void loadLatest({silent: true});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -149,9 +181,9 @@ export default function App() {
   ];
 
   return (
-    <div className="kgp-canvas-bg fixed inset-0 flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      {/* Pinned Top App Bar — Always Visible */}
-      <header className="shrink-0 z-30 border-b border-slate-900/8 liquid-glass-bar dark:border-white/10">
+    <div className="kgp-canvas-bg fixed inset-0 h-dvh w-full flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Pinned Top App Bar — Safe below Dynamic Island & Always Visible */}
+      <header className="shrink-0 z-30 pt-safe border-b border-slate-900/8 liquid-glass-bar dark:border-white/10">
         <div className="mx-auto flex h-12 md:h-14 max-w-6xl items-center justify-between gap-2 sm:gap-6 px-3 sm:px-6">
           {/* Zone 1: Brand Title */}
           <button
@@ -165,7 +197,7 @@ export default function App() {
               referrerPolicy="no-referrer"
               className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg sm:rounded-xl object-cover shadow-sm shrink-0"
             />
-            <span className="font-display text-sm sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap truncate max-w-[110px] sm:max-w-none">
+            <span className="font-display text-sm sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
               <span className="sm:hidden">{lang === 'ml' ? 'സ്വർണ്ണ വില' : 'Kerala Gold'}</span>
               <span className="hidden sm:inline">{t.brandTitle}</span>
             </span>
@@ -259,8 +291,6 @@ export default function App() {
                 <Moon className="h-4 w-4 text-slate-700" aria-hidden="true" />
               )}
             </button>
-
-            <PWAInstallButton />
           </div>
         </div>
       </header>
@@ -290,6 +320,8 @@ export default function App() {
                   preferredSource={preferredSource}
                   alertConfig={alertConfig}
                   alertMatchedValue={alertMatchedValue}
+                  activeAlertEvent={activeAlertEvent}
+                  onDismissAlertEvent={() => setActiveAlertEvent(null)}
                   onOpenAlertModal={() => setAlertOpen(true)}
                   onSelectSource={handleSelectSource}
                   onRefresh={(probe) => loadLatest({probe, silent: true})}
@@ -301,13 +333,15 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
 
-          <footer className="mt-6 border-t border-slate-900/8 pt-4 text-center text-[11px] sm:text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+          <PWAInstallButton />
+
+          <footer className="mt-5 border-t border-slate-900/8 pt-4 text-center text-[11px] sm:text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
             {t.footerText}
           </footer>
         </div>
       </main>
 
-      {/* Pinned Native-Style Bottom Navigation Bar on Mobile — Always Simultaneously Visible with Header */}
+      {/* Pinned Native-Style Bottom Navigation Bar on Mobile — Flush to bottom edge */}
       <nav
         aria-label="Mobile navigation"
         className="md:hidden shrink-0 z-40 border-t border-slate-900/10 liquid-glass-bar pb-safe dark:border-white/10"
@@ -350,13 +384,17 @@ export default function App() {
         onClose={() => setAlertOpen(false)}
         data={latestData}
         lang={lang}
+        onTriggerPreviewBanner={(ev) => setActiveAlertEvent(ev)}
         onAlertChanged={(nextCfg) => {
           setAlertConfig(nextCfg);
-          if (latestData && nextCfg?.enabled) {
+          if (latestData && nextCfg?.enabled && nextCfg.targetEnabled) {
             const val = nextCfg.unit === 'pavan' ? latestData.current.pavan22k : latestData.current.gram22k;
-            setAlertMatchedValue(val <= nextCfg.targetPrice ? val : null);
+            const matched =
+              nextCfg.direction === 'above' ? val >= nextCfg.targetPrice : val <= nextCfg.targetPrice;
+            setAlertMatchedValue(matched ? val : null);
           } else {
             setAlertMatchedValue(null);
+            if (!nextCfg?.enabled) setActiveAlertEvent(null);
           }
         }}
       />

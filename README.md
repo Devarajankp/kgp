@@ -12,7 +12,7 @@ An installable, offline-capable **Progressive Web App (PWA)** and **API-ready ba
   - **Simultaneously Pinned Header & Native Mobile Bottom Navigation**: Header and bottom tab bar stay visible together without hiding each other.
   - **Day / Night Themes & Bilingual View (`English / മലയാളം`)**.
   - **Theme-Matched Share Card (`Web Share API` + `PNG`)**: Generates a Day/Night theme-matched brushed gold rate card including the **last 5 recent rate updates** so buyers immediately see multi-day momentum before sharing or saving PNG.
-  - **Target Price Alerts**: Opt-in browser push/service-worker notifications and in-app matched banners whenever the daily rate drops to or below your target.
+  - **Dual-Unit Price Alerts (Master ON/OFF)**: Toggleable instant rate-change alerts (`🟢 ▲` rise / `🔴 ▼` drop for both 1 Pavan & 1 Gram), daily summaries, and custom target thresholds (`≤` or `≥`) across Browser Push, iOS Home-Screen PWA Push, In-App banners, and Apple iPhone Shortcuts.
   - **Live Global Spot & Buy-vs-Wait Outlook**: Compares live raw `XAU/INR` & `USD/INR` market feeds (`LivePriceOfGold.com`) against Kerala AKGSMA retail rates for urgent vs. flexible buyer context (no fabricated price guarantees).
   - **8-Source Live Fallback Chain**: Automatically switches across verified providers if any single source is slow or down.
 - **Calculator Tab (Right)**: Auto-syncs live rates; supports `22K / 24K / 18K`, `Pavan / Gram`, `% / ₹ per gram / Flat` making charges, `GST`, `BIS HUID` hallmarking (`₹45`), stone charges, old-gold exchange, and reverse budget weight estimation.
@@ -35,7 +35,7 @@ All endpoints support **CORS (`*`)**, per-IP rate limiting (`120 req/min`), stri
 | `/api/gold/spot` | `GET` | Live international `XAU/INR`, `USD/INR`, 24h change %, and day high/low |
 | `/api/gold/sources` | `GET` | Live status & latency probe across all 8 Kerala providers |
 | `/api/gold/calculate` | `GET` / `POST` | Live jewellery bill & reverse budget estimator (`?weight=2&unit=pavan&purity=22k&makingMode=percent&makingValue=10&gst=3&hallmark=true`) |
-| `/api/gold/alert-check` | `GET` | Daily target-price check (`?target=98000&unit=pavan`) returning `targetMet: true\|false` |
+| `/api/gold/alert-check` | `GET` | Daily, rate-change & optional target alert check (`?target=98000&unit=pavan&direction=below&prevPavan=100920&format=text&lang=en\|ml`) with dual 1 Pavan & 1 Gram color-coded symbols |
 
 ### Static GitHub Pages JSON Endpoints (No Node Server Needed)
 When deployed to **GitHub Pages**, `.github/workflows/deploy-pages.yml` automatically refreshes these static JSON files daily at **04:15 UTC (09:45 IST)**:
@@ -53,8 +53,8 @@ When deployed to **GitHub Pages**, `.github/workflows/deploy-pages.yml` automati
 3. Read values easily with **Get Dictionary Value**:
    - `summaryText` (or `summaryMalayalam`) → pass to **Show Notification** or **Speak Text**.
    - `pavan22kFormatted`, `gram22kFormatted`, `changePavan`, `outlookNote` → build lock-screen widgets or custom alerts.
-4. **Daily Target Alert Automation**:
-   - In **Automation → Time of Day (9:45 AM Daily)** → **Get Contents of URL** `https://<your-server>/api/gold/alert-check?target=98000&unit=pavan` → **If** `targetMet` is `true` → **Show Notification** with `message`.
+4. **Daily & Price-Change Alert Automation**:
+   - In **Automation → Time of Day (9:45 AM & 4:00 PM IST)** → **Get Contents of URL** `https://<your-server>/api/gold/alert-check?format=text` (or add `?target=98000&unit=pavan`) → **Show Notification** with the returned dual-unit color-coded summary (`🟢 ▲` / `🔴 ▼`).
 
 ---
 
