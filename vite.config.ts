@@ -23,7 +23,7 @@ export default defineConfig(() => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
-          'data/kerala-gold-snapshot.json',
+          'sw-push.js',
         ],
         manifest: {
           id: basePath,
@@ -60,14 +60,34 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          importScripts: ['sw-push.js'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,
           navigateFallback: `${basePath}index.html`,
           navigateFallbackDenylist: [/^\/api\//, /\/api\//],
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2}'],
-          globIgnores: ['**/assets/aistudio/**'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globIgnores: ['**/assets/aistudio/**', '**/api/**', '**/data/**'],
           runtimeCaching: [
+            {
+              urlPattern: /\/api\/(gold\/stream|push\/)|refresh=true/i,
+              handler: 'NetworkOnly',
+            },
+            {
+              urlPattern: /\/(api\/.*\.json|data\/kerala-gold-snapshot\.json)/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'kgp-static-snapshot-cache',
+                networkTimeoutSeconds: 4,
+                expiration: {
+                  maxEntries: 12,
+                  maxAgeSeconds: 60 * 60 * 24 * 7,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: /\/api\/gold\/.*/i,
               handler: 'NetworkFirst',

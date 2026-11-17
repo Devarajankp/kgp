@@ -10,10 +10,17 @@ import {PWAInstallButton} from './components/PWAInstallButton';
 import {ShareModal} from './components/ShareModal';
 import {TRANSLATIONS} from './i18n/translations';
 import {maybeAutoPrune} from './services/cacheDb';
-import {fetchLatestGold, fetchLiveSpotMarket} from './services/goldClient';
+import {
+  fetchLatestGold,
+  fetchLiveSpotMarket,
+  isStaticPagesEnvironment,
+  subscribeGoldStream,
+  type DataSourceMode,
+} from './services/goldClient';
 import {
   evaluatePriceAlerts,
   readPriceAlert,
+  syncServerPushSubscription,
   type ActiveAlertEvent,
   type PriceAlertConfig,
 } from './services/priceAlerts';
@@ -23,6 +30,7 @@ type TabKey = 'history' | 'live' | 'calculator';
 
 const THEME_STORAGE_KEY = 'kgp-theme';
 const LANG_STORAGE_KEY = 'kgp-lang';
+const AUTO_SYNC_INTERVAL_MS = 150_000; // 2m 30s auto-sync window
 
 function getInitialTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light';
@@ -47,8 +55,12 @@ export default function App() {
   const [latestData, setLatestData] = useState<LatestGoldResponse | null>(null);
   const [spotData, setSpotData] = useState<LiveSpotMarketData | null>(null);
   const [fromCache, setFromCache] = useState(false);
+  const [dataMode, setDataMode] = useState<DataSourceMode>('live-api');
+  const [streamConnected, setStreamConnected] = useState(false);
+  const [streamEpoch, setStreamEpoch] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [shareOpen, setShareOpen] = useState(false);
@@ -93,8 +105,14 @@ export default function App() {
   );
 
   const loadLatest = useCallback(
-    async (options?: {source?: PreferredSource; probe?: boolean; silent?: boolean}) => {
+    async (options?: {
+      source?: PreferredSource;
+      probe?: boolean;
+      silent?: boolean;
+      forceRefresh?: boolean;
+    }) => {
       const targetSource = options?.source ?? preferredSource;
+      const force = options?.forceRefresh ?? false;
       if (options?.silent) {
         setRefreshing(true);
       } else if (!latestData) {
@@ -109,11 +127,19 @@ export default function App() {
           fetchLatestGold({
             source: targetSource,
             probe: options?.probe ?? false,
+            forceRefresh: force,
           }),
-          fetchLiveSpotMarket(),
+          fetchLiveSpotMarket(force),
         ]);
         setLatestData(res.data);
         setFromCache(res.fromCache);
+        setDataMode(res.dataMode);
+        if (!res.fromCache) {
+          setLastSyncedAt(Date.now());
+        } else if (res.data.fetchedAt) {
+          const parsedTs = Date.parse(res.data.fetchedAt);
+          if (Number.isFinite(parsedTs)) setLastSyncedAt(parsedTs);
+        }
         if (spot) setSpotData(spot);
         await checkAlerts(res.data);
       } catch (err) {
@@ -133,37 +159,62 @@ export default function App() {
         const cachedFirst = await fetchLatestGold({preferCacheFirst: true});
         setLatestData(cachedFirst.data);
         setFromCache(cachedFirst.fromCache);
+        setDataMode(cachedFirst.dataMode);
         setLoading(false);
         await checkAlerts(cachedFirst.data);
       } catch {
         // Proceed directly to live fetch
       }
-      await loadLatest({silent: true});
+      await loadLatest({silent: true, forceRefresh: true});
+
+      const cfg = readPriceAlert();
+      if (cfg?.enabled) {
+        void syncServerPushSubscription(cfg, lang);
+      }
     })();
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void loadLatest({silent: true});
-      }
-    }, 10 * 60 * 1000);
+    let intervalId: number | null = null;
+    if (!isStaticPagesEnvironment()) {
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          void loadLatest({silent: true, forceRefresh: true});
+        }
+      }, AUTO_SYNC_INTERVAL_MS);
+    }
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void loadLatest({silent: true});
+        void loadLatest({silent: true, forceRefresh: true});
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      window.clearInterval(intervalId);
+      if (intervalId !== null) window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = subscribeGoldStream(
+      (streamedLatest) => {
+        setLatestData(streamedLatest);
+        setFromCache(false);
+        setDataMode('live-api');
+        setLastSyncedAt(Date.now());
+        void checkAlerts(streamedLatest);
+      },
+      (connected) => {
+        setStreamConnected(connected);
+      },
+    );
+    return unsubscribe;
+  }, [streamEpoch, checkAlerts]);
+
   const handleSelectSource = async (nextSource: PreferredSource) => {
     setPreferredSource(nextSource);
-    await loadLatest({source: nextSource, probe: true, silent: true});
+    await loadLatest({source: nextSource, probe: true, silent: true, forceRefresh: true});
   };
 
   const toggleTheme = () => {
@@ -184,20 +235,20 @@ export default function App() {
     <div className="kgp-canvas-bg fixed inset-0 h-dvh w-full flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Pinned Top App Bar — Safe below Dynamic Island & Always Visible */}
       <header className="shrink-0 z-30 pt-safe border-b border-slate-900/8 liquid-glass-bar dark:border-white/10">
-        <div className="mx-auto flex h-12 md:h-14 max-w-6xl items-center justify-between gap-2 sm:gap-6 px-3 sm:px-6">
+        <div className="mx-auto flex h-11 md:h-13 max-w-6xl items-center justify-between gap-2 sm:gap-6 px-2.5 sm:px-6">
           {/* Zone 1: Brand Title */}
           <button
             type="button"
             onClick={() => setActiveTab('live')}
-            className="flex items-center gap-2 text-left whitespace-nowrap cursor-pointer min-w-0"
+            className="flex items-center gap-1.5 sm:gap-2 text-left whitespace-nowrap cursor-pointer min-w-0"
           >
             <img
               src={`${import.meta.env.BASE_URL}pwa-192x192.png`}
               alt="Kerala Gold Price logo"
               referrerPolicy="no-referrer"
-              className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg sm:rounded-xl object-cover shadow-sm shrink-0"
+              className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg object-cover shadow-sm shrink-0"
             />
-            <span className="font-display text-sm sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
+            <span className="font-display text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
               <span className="sm:hidden">{lang === 'ml' ? 'സ്വർണ്ണ വില' : 'Kerala Gold'}</span>
               <span className="hidden sm:inline">{t.brandTitle}</span>
             </span>
@@ -269,7 +320,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => loadLatest({probe: false, silent: true})}
+              onClick={() => loadLatest({probe: false, silent: true, forceRefresh: true})}
               disabled={refreshing}
               aria-label="Refresh gold rate"
               title="Refresh gold rate"
@@ -297,7 +348,7 @@ export default function App() {
 
       {/* Scrollable Middle Viewport Content (strictly bounded between pinned header & bottom nav) */}
       <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-        <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-5 pb-6 md:pb-8">
+        <div className="mx-auto max-w-6xl px-2.5 sm:px-6 pt-2 pb-5 sm:py-4 md:pb-8">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeTab}
@@ -316,6 +367,10 @@ export default function App() {
                   loading={loading}
                   refreshing={refreshing}
                   fromCache={fromCache}
+                  dataMode={dataMode}
+                  streamConnected={streamConnected}
+                  lastSyncedAt={lastSyncedAt}
+                  autoSyncIntervalMs={AUTO_SYNC_INTERVAL_MS}
                   error={error}
                   preferredSource={preferredSource}
                   alertConfig={alertConfig}
@@ -324,7 +379,7 @@ export default function App() {
                   onDismissAlertEvent={() => setActiveAlertEvent(null)}
                   onOpenAlertModal={() => setAlertOpen(true)}
                   onSelectSource={handleSelectSource}
-                  onRefresh={(probe) => loadLatest({probe, silent: true})}
+                  onRefresh={(probe) => loadLatest({probe, silent: true, forceRefresh: true})}
                   onOpenCalculator={() => setActiveTab('calculator')}
                 />
               )}
@@ -384,6 +439,11 @@ export default function App() {
         onClose={() => setAlertOpen(false)}
         data={latestData}
         lang={lang}
+        streamConnected={streamConnected}
+        onApiServerChanged={() => {
+          setStreamEpoch((n) => n + 1);
+          void loadLatest({silent: true, forceRefresh: true});
+        }}
         onTriggerPreviewBanner={(ev) => setActiveAlertEvent(ev)}
         onAlertChanged={(nextCfg) => {
           setAlertConfig(nextCfg);

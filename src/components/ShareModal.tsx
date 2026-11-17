@@ -1,9 +1,29 @@
-import {Check, Copy, Download, Moon, Share2, Sun, X} from 'lucide-react';
-import React, {useEffect, useMemo, useState} from 'react';
+import {
+  Check,
+  Copy,
+  Download,
+  ImagePlus,
+  Moon,
+  RotateCcw,
+  Share2,
+  Sun,
+  Trash2,
+  X,
+} from 'lucide-react';
+import React, {useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import type {AppLanguage, LatestGoldResponse} from '../types/gold';
-import {formatInr, formatSignedInr} from '../utils/format';
-import {buildShareText, renderShareCardPng} from '../utils/shareCard';
+import {
+  buildShareText,
+  clearCachedSharePhoto,
+  processCustomPhotoFile,
+  readCachedSharePhoto,
+  renderShareCardPng,
+  saveCachedSharePhoto,
+  type ShareAspectRatio,
+  type ShareCardOptions,
+  type ShareCustomPhoto,
+} from '../utils/shareCard';
 
 interface ShareModalProps {
   open: boolean;
@@ -13,138 +33,174 @@ interface ShareModalProps {
   theme: 'light' | 'dark';
 }
 
+const ASPECT_OPTIONS: Array<{id: ShareAspectRatio; label: string}> = [
+  {id: 'auto', label: 'Auto'},
+  {id: '9:16', label: '9:16 Status'},
+  {id: '4:5', label: '4:5 IG'},
+  {id: '1:1', label: '1:1'},
+];
+
 export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang, theme}) => {
   const [cardTheme, setCardTheme] = useState<'light' | 'dark'>(theme);
+  const [includeChart, setIncludeChart] = useState(true);
+  const [includeHistory, setIncludeHistory] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<ShareAspectRatio>('auto');
+  const [customPhoto, setCustomPhoto] = useState<ShareCustomPhoto | null>(() => readCachedSharePhoto());
+
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragStateRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    origOffsetX: number;
+    origOffsetY: number;
+  } | null>(null);
 
   useEffect(() => {
     if (open) {
       setCardTheme(theme);
+      setCustomPhoto(readCachedSharePhoto());
+      setStatusMsg(null);
+      setCopied(false);
     }
   }, [open, theme]);
 
   useEffect(() => {
     if (!open || !data) return;
-    setStatusMsg(null);
-    setCopied(false);
     let cancelled = false;
-    renderShareCardPng(data, lang, cardTheme).then((blob) => {
-      if (!cancelled) setPreviewBlob(blob);
-    });
+    setRendering(true);
+
+    const options: ShareCardOptions = {
+      includeChart,
+      includeHistory,
+      aspectRatio,
+      customPhoto,
+    };
+
+    const timer = window.setTimeout(() => {
+      void renderShareCardPng(data, lang, cardTheme, options).then((blob) => {
+        if (cancelled) return;
+        setRendering(false);
+        setPreviewBlob(blob);
+        setPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return blob ? URL.createObjectURL(blob) : null;
+        });
+      });
+    }, 35);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [open, data, lang, cardTheme]);
+  }, [open, data, lang, cardTheme, includeChart, includeHistory, aspectRatio, customPhoto]);
 
-  const recentEntries = useMemo(() => {
-    if (!data?.entries) return [];
-    return data.entries.slice(-5).reverse();
-  }, [data]);
-
-  const miniChart = useMemo(() => {
-    const entries = data?.entries || [];
-    if (entries.length < 2) return null;
-
-    const minVal = Math.min(...entries.map((e) => e.pavan));
-    const maxVal = Math.max(...entries.map((e) => e.pavan));
-    const span = Math.max(1, maxVal - minVal);
-    const padLow = Math.round(minVal - span * 0.12);
-    const padHigh = Math.round(maxVal + span * 0.12);
-    const padSpan = Math.max(1, padHigh - padLow);
-
-    const w = 320;
-    const h = 92;
-    const left = 54;
-    const right = 8;
-    const top = 10;
-    const bottom = 18;
-    const innerW = w - left - right;
-    const innerH = h - top - bottom;
-
-    let peakIdx = 0;
-    let lowIdx = 0;
-    const pts = entries.map((e, idx) => {
-      if (e.pavan >= entries[peakIdx].pavan) peakIdx = idx;
-      if (e.pavan <= entries[lowIdx].pavan) lowIdx = idx;
-      const x = left + (idx / Math.max(1, entries.length - 1)) * innerW;
-      const y = top + innerH - ((e.pavan - padLow) / padSpan) * innerH;
-      return {x, y, entry: e};
-    });
-
-    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-    const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${(top + innerH).toFixed(1)} L${pts[0].x.toFixed(1)},${(top + innerH).toFixed(1)} Z`;
-    const midIdx = Math.floor((entries.length - 1) / 2);
-    const monthNet = entries[entries.length - 1].pavan - entries[0].pavan;
-
-    return {
-      w,
-      h,
-      left,
-      top,
-      innerW,
-      innerH,
-      padLow,
-      padHigh,
-      minVal,
-      maxVal,
-      peakIdx,
-      lowIdx,
-      midIdx,
-      monthNet,
-      pts,
-      linePath,
-      areaPath,
-      firstLabel: entries[0].dateLabel.replace(/-\d{2}$/, ''),
-      midLabel: entries[midIdx].dateLabel.replace(/-\d{2}$/, ''),
-      lastLabel: entries[entries.length - 1].dateLabel.replace(/-\d{2}$/, ''),
-      count: entries.length,
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
-  }, [data]);
+  }, [previewUrl]);
 
   if (!open || !data || typeof document === 'undefined') return null;
 
-  const isUp = data.current.direction === 'up';
-  const isDown = data.current.direction === 'down';
   const isDarkCard = cardTheme === 'dark';
   const shareText = buildShareText(data, lang);
   const supportsWebShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const hasEntries = (data.entries?.length ?? 0) > 0;
+  const hasChartData = (data.entries?.length ?? 0) >= 2;
+
+  const currentOptions: ShareCardOptions = {
+    includeChart,
+    includeHistory,
+    aspectRatio,
+    customPhoto,
+  };
+
+  const updatePhotoState = (updater: (prev: ShareCustomPhoto) => ShareCustomPhoto) => {
+    setCustomPhoto((prev) => {
+      if (!prev) return prev;
+      const next = updater(prev);
+      saveCachedSharePhoto(next);
+      return next;
+    });
+  };
+
+  const handleSelectPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setStatusMsg(null);
+    try {
+      const dataUrl = await processCustomPhotoFile(file);
+      const nextPhoto: ShareCustomPhoto = {
+        dataUrl,
+        zoom: 1,
+        offsetX: 0,
+        offsetY: 0,
+        scrimOpacity: 0.35,
+      };
+      setCustomPhoto(nextPhoto);
+      const saved = saveCachedSharePhoto(nextPhoto);
+      if (aspectRatio === 'auto') {
+        setAspectRatio('9:16');
+      }
+      setStatusMsg(
+        saved
+          ? lang === 'ml'
+            ? 'ചിത്രം ചേർത്തു & ക്യാഷ് ചെയ്തു! ക്രമീകരിക്കാൻ ഡ്രാഗ് ചെയ്യുക.'
+            : 'Photo merged & cached! Drag preview to reposition.'
+          : lang === 'ml'
+            ? 'ചിത്രം ചേർത്തു (സ്റ്റോറേജ് പരിധി കാരണം ക്യാഷ് ചെയ്യാനായില്ല).'
+            : 'Photo merged! (Too large to persist in cache.)',
+      );
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : 'Unable to load selected photo.');
+    }
+  };
+
+  const handleClearPhoto = () => {
+    clearCachedSharePhoto();
+    setCustomPhoto(null);
+    setStatusMsg(lang === 'ml' ? 'ക്യാഷ് ചെയ്ത ചിത്രം നീക്കം ചെയ്തു.' : 'Cleared cached photo.');
+  };
 
   const handleNativeShare = async () => {
     setSharing(true);
     setStatusMsg(null);
     try {
-      const blob = previewBlob || (await renderShareCardPng(data, lang, cardTheme));
+      const blob = previewBlob || (await renderShareCardPng(data, lang, cardTheme, currentOptions));
       if (blob && typeof File !== 'undefined') {
         const fileName = `kerala-gold-${data.current.dateLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`;
         const file = new File([blob], fileName, {type: 'image/png'});
         if (navigator.canShare && navigator.canShare({files: [file]})) {
-          await navigator.share({
-            title: lang === 'ml' ? 'ഇന്നത്തെ കേരള സ്വർണ്ണ വില' : 'Kerala Gold Price Today',
-            text: shareText,
-            files: [file],
-          });
-          setStatusMsg(lang === 'ml' ? 'കാർഡ് പങ്കിട്ടു!' : 'Shared rate card!');
+          // Strictly image-only share (no caption text attached)
+          await navigator.share({files: [file]});
+          setStatusMsg(lang === 'ml' ? 'സ്ക്രീൻഷോട്ട് ചിത്രം പങ്കിട്ടു!' : 'Shared screenshot image!');
           return;
         }
       }
 
-      await navigator.share({
-        title: lang === 'ml' ? 'ഇന്നത്തെ കേരള സ്വർണ്ണ വില' : 'Kerala Gold Price Today',
-        text: shareText,
-        url: window.location.href,
-      });
-      setStatusMsg(lang === 'ml' ? 'നിരക്കുകൾ പങ്കിട്ടു!' : 'Shared gold rates!');
+      setStatusMsg(
+        lang === 'ml'
+          ? 'ഈ ബ്രൗസറിൽ നേരിട്ടുള്ള ഇമേജ് ഷെയർ പിന്തുണയില്ല — Save PNG ഉപയോഗിക്കുക.'
+          : 'Image file share unsupported on this browser — use Save PNG below.',
+      );
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setStatusMsg(null);
       } else {
         setStatusMsg(
           lang === 'ml'
-            ? 'നേരിട്ട് പങ്കിടാനായില്ല — പകർത്തുകയോ ഡൗൺലോഡ് ചെയ്യുകയോ ചെയ്യാം.'
-            : 'Native share unavailable here — use Copy or Save PNG below.',
+            ? 'നേരിട്ട് പങ്കിടാനായില്ല — Save PNG ഉപയോഗിക്കുക.'
+            : 'Native share unavailable here — use Save PNG below.',
         );
       }
     } finally {
@@ -163,7 +219,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
   };
 
   const handleDownloadPng = async () => {
-    const blob = previewBlob || (await renderShareCardPng(data, lang, cardTheme));
+    const blob = previewBlob || (await renderShareCardPng(data, lang, cardTheme, currentOptions));
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -173,12 +229,42 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setStatusMsg(lang === 'ml' ? 'ഷെയർ കാർഡ് സേവ് ചെയ്തു!' : 'Saved share card PNG!');
+    setStatusMsg(lang === 'ml' ? 'ഷെയർ കാർഡ് സേവ് ചെയ്തു!' : 'Saved screenshot PNG!');
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!customPhoto) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStateRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origOffsetX: customPhoto.offsetX,
+      origOffsetY: customPhoto.offsetY,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const ds = dragStateRef.current;
+    if (!ds?.active || !customPhoto) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dx = (e.clientX - ds.startX) / Math.max(80, rect.width * 0.45);
+    const dy = (e.clientY - ds.startY) / Math.max(80, rect.height * 0.45);
+    const nextX = Math.max(-1, Math.min(1, ds.origOffsetX + dx));
+    const nextY = Math.max(-1, Math.min(1, ds.origOffsetY + dy));
+    setCustomPhoto((prev) => (prev ? {...prev, offsetX: nextX, offsetY: nextY} : prev));
+  };
+
+  const handlePointerUp = () => {
+    if (dragStateRef.current?.active && customPhoto) {
+      dragStateRef.current = null;
+      saveCachedSharePhoto(customPhoto);
+    }
   };
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-3 sm:p-4"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-2.5 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-modal-title"
@@ -186,10 +272,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="liquid-glass w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100 shadow-2xl">
+      <div className="liquid-glass w-full max-w-lg max-h-[calc(100dvh-1.25rem)] overflow-y-auto rounded-3xl p-4 sm:p-5 text-slate-900 dark:text-slate-100 shadow-2xl">
         <div className="flex items-center justify-between gap-2">
           <h2 id="share-modal-title" className="font-display text-base sm:text-lg font-bold">
-            {lang === 'ml' ? 'സ്വർണ്ണ വില പങ്കിടുക' : 'Share Gold Rate Card'}
+            {lang === 'ml' ? 'സ്ക്രീൻഷോട്ട് പങ്കിടുക' : 'Share Rate Screenshot'}
           </h2>
           <div className="flex items-center gap-1.5">
             <button
@@ -197,7 +283,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
               onClick={() => setCardTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
               aria-label="Toggle share card theme"
               title={isDarkCard ? 'Switch card to Day theme' : 'Switch card to Night theme'}
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl border border-slate-900/10 bg-white/70 text-slate-700 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 cursor-pointer"
+              className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-xl border border-slate-900/10 bg-white/70 text-slate-700 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 cursor-pointer"
             >
               {isDarkCard ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5" />}
             </button>
@@ -205,356 +291,205 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
               type="button"
               onClick={onClose}
               aria-label="Close share dialog"
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+              className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* Theme-Matched Brushed Gold Share Card Preview (Tiles + Miniature Monthly Chart + Recent 5 Days) */}
-        <div
-          className={`mt-3 overflow-hidden rounded-2xl border p-3.5 sm:p-4 shadow-xl transition-colors ${
-            isDarkCard
-              ? 'border-amber-400/35 bg-gradient-to-br from-[#10131a] via-[#18140d] to-[#0a0c11] text-white'
-              : 'border-amber-600/25 bg-gradient-to-br from-[#faf7f0] via-[#f2e8d4] to-[#f8f4ea] text-slate-900'
-          }`}
-        >
-          <div
-            className={`flex items-center justify-between gap-2 border-b pb-2 text-[10.5px] sm:text-[11px] ${
-              isDarkCard ? 'border-white/10' : 'border-slate-900/10'
-            }`}
-          >
-            <span
-              className={`font-display font-bold tracking-wide ${
-                isDarkCard ? 'text-amber-300' : 'text-amber-800'
+        {/* Section Toggles + Aspect Ratio Bar */}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!hasChartData}
+              onClick={() => setIncludeChart((v) => !v)}
+              className={`min-h-[30px] rounded-lg px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer disabled:opacity-40 ${
+                includeChart && hasChartData
+                  ? 'bg-amber-600 text-white dark:bg-amber-500 dark:text-slate-950'
+                  : 'border border-slate-900/12 bg-white/60 text-slate-700 dark:border-white/15 dark:bg-white/8 dark:text-slate-300'
               }`}
             >
-              {lang === 'ml' ? 'കേരള സ്വർണ്ണ വില · KGP' : 'KERALA GOLD PRICE · KGP'}
-            </span>
-            <span
-              className={`tabular-nums truncate ${
-                isDarkCard ? 'text-slate-300' : 'text-slate-600'
+              {includeChart ? '✓ ' : '+ '}
+              {lang === 'ml' ? 'ചാർട്ട്' : 'Chart'}
+            </button>
+            <button
+              type="button"
+              disabled={!hasEntries}
+              onClick={() => setIncludeHistory((v) => !v)}
+              className={`min-h-[30px] rounded-lg px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer disabled:opacity-40 ${
+                includeHistory && hasEntries
+                  ? 'bg-amber-600 text-white dark:bg-amber-500 dark:text-slate-950'
+                  : 'border border-slate-900/12 bg-white/60 text-slate-700 dark:border-white/15 dark:bg-white/8 dark:text-slate-300'
               }`}
             >
-              {data.current.dateLabel} · {data.scheduleLabel}
-            </span>
+              {includeHistory ? '✓ ' : '+ '}
+              {lang === 'ml' ? 'ചരിത്രം' : 'History'}
+            </button>
           </div>
 
-          <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-            {/* 1 Pavan Gold Metallic Shimmer Tile */}
-            <div
-              className={`gold-shimmer rounded-xl border p-2.5 sm:p-3 ${
-                isDarkCard
-                  ? 'border-amber-400/35 bg-gradient-to-br from-amber-500/18 via-amber-400/8 to-transparent'
-                  : 'border-amber-600/30 bg-gradient-to-br from-amber-500/20 via-amber-200/35 to-white/65'
-              }`}
-            >
-              <div
-                className={`text-[10px] sm:text-[10.5px] font-semibold ${
-                  isDarkCard ? 'text-amber-200' : 'text-amber-900'
+          <div className="liquid-segmented inline-flex rounded-xl p-0.5">
+            {ASPECT_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setAspectRatio(opt.id)}
+                className={`min-h-[28px] rounded-lg px-2 py-0.5 text-[10.5px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                  aspectRatio === opt.id
+                    ? 'liquid-pill-active text-slate-900 dark:text-white'
+                    : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                {lang === 'ml' ? '1 പവൻ (8g · 22K)' : '1 PAVAN (8g · 22K)'}
-              </div>
-              <div
-                className={`mt-0.5 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
-                  isDarkCard
-                    ? 'bg-gradient-to-r from-[#f5d07a] via-[#fff2b8] to-[#efb849] bg-clip-text text-transparent'
-                    : 'bg-gradient-to-r from-[#7c4706] via-[#c48112] to-[#7c4706] bg-clip-text text-transparent'
-                }`}
-              >
-                {formatInr(data.current.pavan22k)}
-              </div>
-              <div
-                className={`mt-0.5 text-[10.5px] sm:text-[11px] font-semibold tabular-nums ${
-                  isUp
-                    ? isDarkCard
-                      ? 'text-emerald-400'
-                      : 'text-emerald-700'
-                    : isDown
-                      ? isDarkCard
-                        ? 'text-rose-400'
-                        : 'text-rose-700'
-                      : 'text-slate-500'
-                }`}
-              >
-                {data.current.changePavan === 0
-                  ? lang === 'ml'
-                    ? 'മാറ്റമില്ല'
-                    : 'Steady'
-                  : `${isUp ? '▲' : '▼'} ${formatSignedInr(data.current.changePavan)}`}
-              </div>
-            </div>
-
-            {/* 1 Gram Tile */}
-            <div
-              className={`rounded-xl border p-2.5 sm:p-3 ${
-                isDarkCard ? 'border-white/12 bg-white/5' : 'border-slate-900/10 bg-white/65'
-              }`}
-            >
-              <div
-                className={`text-[10px] sm:text-[10.5px] font-semibold ${
-                  isDarkCard ? 'text-slate-300' : 'text-slate-600'
-                }`}
-              >
-                {lang === 'ml' ? '1 ഗ്രാം (22K)' : '1 GRAM (22K)'}
-              </div>
-              <div
-                className={`mt-0.5 font-gold-numeral text-xl sm:text-2xl font-bold tracking-tight ${
-                  isDarkCard ? 'text-white' : 'text-slate-900'
-                }`}
-              >
-                {formatInr(data.current.gram22k)}
-              </div>
-              <div
-                className={`mt-0.5 text-[10px] tabular-nums ${
-                  isDarkCard ? 'text-slate-300' : 'text-slate-600'
-                }`}
-              >
-                24K: {formatInr(data.current.gram24kEstimate)} · 18K: {formatInr(data.current.gram18kEstimate)}
-              </div>
-            </div>
-          </div>
-
-          {/* Miniature Active-Month Trend Chart */}
-          {miniChart && (
-            <div
-              className={`mt-2.5 rounded-xl border p-2.5 ${
-                isDarkCard
-                  ? 'border-amber-400/20 bg-white/[0.035]'
-                  : 'border-amber-700/18 bg-white/60'
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] font-semibold mb-1">
-                <span className={isDarkCard ? 'text-amber-300' : 'text-amber-800'}>
-                  {data.monthLabel} ({miniChart.count} updates)
-                </span>
-                <span
-                  className={`tabular-nums ${
-                    miniChart.monthNet > 0
-                      ? isDarkCard
-                        ? 'text-emerald-400'
-                        : 'text-emerald-700'
-                      : miniChart.monthNet < 0
-                        ? isDarkCard
-                          ? 'text-rose-400'
-                          : 'text-rose-700'
-                        : isDarkCard
-                          ? 'text-slate-400'
-                          : 'text-slate-600'
-                  }`}
-                >
-                  {miniChart.monthNet === 0
-                    ? 'Net: Steady'
-                    : `Net: ${miniChart.monthNet > 0 ? '▲' : '▼'} ${formatSignedInr(miniChart.monthNet)}`}
-                </span>
-              </div>
-
-              <svg
-                viewBox={`0 0 ${miniChart.w} ${miniChart.h}`}
-                className="w-full h-24 overflow-visible"
-                role="img"
-                aria-label={`${data.monthLabel} miniature gold price chart`}
-              >
-                <defs>
-                  <linearGradient id="shareMiniAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={isDarkCard ? '#efb849' : '#b87714'} stopOpacity="0.35" />
-                    <stop offset="100%" stopColor={isDarkCard ? '#efb849' : '#b87714'} stopOpacity="0.01" />
-                  </linearGradient>
-                </defs>
-
-                {[0, 0.5, 1].map((tRatio, idx) => {
-                  const y = miniChart.top + tRatio * miniChart.innerH;
-                  const val = Math.round(miniChart.padHigh - tRatio * (miniChart.padHigh - miniChart.padLow));
-                  return (
-                    <g key={idx}>
-                      <line
-                        x1={miniChart.left}
-                        x2={miniChart.left + miniChart.innerW}
-                        y1={y}
-                        y2={y}
-                        stroke={isDarkCard ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)'}
-                        strokeDasharray="3 3"
-                        strokeWidth="0.75"
-                      />
-                      <text
-                        x={miniChart.left - 4}
-                        y={y + 3}
-                        textAnchor="end"
-                        fill={isDarkCard ? 'rgba(241,245,249,0.6)' : 'rgba(30,41,59,0.6)'}
-                        fontSize="7.5"
-                        fontFamily="JetBrains Mono, monospace"
-                      >
-                        {formatInr(val)}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                <path d={miniChart.areaPath} fill="url(#shareMiniAreaGrad)" />
-                <path
-                  d={miniChart.linePath}
-                  fill="none"
-                  stroke={isDarkCard ? '#efb849' : '#b87714'}
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-
-                {/* Peak, Low, and Latest Dots */}
-                <circle
-                  cx={miniChart.pts[miniChart.peakIdx].x}
-                  cy={miniChart.pts[miniChart.peakIdx].y}
-                  r="3"
-                  fill="#10b981"
-                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
-                  strokeWidth="1"
-                />
-                <circle
-                  cx={miniChart.pts[miniChart.lowIdx].x}
-                  cy={miniChart.pts[miniChart.lowIdx].y}
-                  r="3"
-                  fill="#f43f5e"
-                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
-                  strokeWidth="1"
-                />
-                <circle
-                  cx={miniChart.pts[miniChart.pts.length - 1].x}
-                  cy={miniChart.pts[miniChart.pts.length - 1].y}
-                  r="3.2"
-                  fill={isDarkCard ? '#fde047' : '#d97706'}
-                  stroke={isDarkCard ? '#10131a' : '#ffffff'}
-                  strokeWidth="1"
-                />
-
-                {/* X-Axis Labels */}
-                <text
-                  x={miniChart.left}
-                  y={miniChart.top + miniChart.innerH + 12}
-                  textAnchor="start"
-                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
-                  fontSize="7.5"
-                >
-                  {miniChart.firstLabel}
-                </text>
-                <text
-                  x={miniChart.pts[miniChart.midIdx].x}
-                  y={miniChart.top + miniChart.innerH + 12}
-                  textAnchor="middle"
-                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
-                  fontSize="7.5"
-                >
-                  {miniChart.midLabel}
-                </text>
-                <text
-                  x={miniChart.left + miniChart.innerW}
-                  y={miniChart.top + miniChart.innerH + 12}
-                  textAnchor="end"
-                  fill={isDarkCard ? 'rgba(241,245,249,0.58)' : 'rgba(30,41,59,0.58)'}
-                  fontSize="7.5"
-                >
-                  {miniChart.lastLabel}
-                </text>
-              </svg>
-
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[9.5px] tabular-nums">
-                <span className={isDarkCard ? 'text-emerald-400' : 'text-emerald-700'}>
-                  ● Peak ({miniChart.pts[miniChart.peakIdx].entry.dateLabel.replace(/-\d{2}$/, '')}):{' '}
-                  {formatInr(miniChart.maxVal)}
-                </span>
-                <span className={isDarkCard ? 'text-rose-400' : 'text-rose-700'}>
-                  ● Low ({miniChart.pts[miniChart.lowIdx].entry.dateLabel.replace(/-\d{2}$/, '')}):{' '}
-                  {formatInr(miniChart.minVal)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Recent 5-Day Price History Strip */}
-          {recentEntries.length > 0 && (
-            <div
-              className={`mt-2.5 rounded-xl border p-2.5 ${
-                isDarkCard
-                  ? 'border-white/10 bg-white/[0.035]'
-                  : 'border-slate-900/10 bg-white/55'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-[10px] font-semibold mb-1">
-                <span className={isDarkCard ? 'text-amber-300' : 'text-amber-800'}>
-                  {lang === 'ml' ? 'സമീപകാല മാറ്റങ്ങൾ (1 പവൻ)' : 'Recent Trend (1 Pavan)'}
-                </span>
-              </div>
-
-              <div
-                className={`divide-y text-[10.5px] tabular-nums ${
-                  isDarkCard ? 'divide-white/8' : 'divide-slate-900/8'
-                }`}
-              >
-                {recentEntries.map((entry) => {
-                  const eUp = entry.direction === 'up';
-                  const eDown = entry.direction === 'down';
-                  return (
-                    <div key={entry.id} className="flex items-center justify-between gap-2 py-1">
-                      <span className={`truncate ${isDarkCard ? 'text-slate-300' : 'text-slate-700'}`}>
-                        {entry.dateLabel}{' '}
-                        <span className={isDarkCard ? 'text-slate-500' : 'text-slate-400'}>
-                          ({entry.session})
-                        </span>
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`font-semibold ${isDarkCard ? 'text-white' : 'text-slate-900'}`}>
-                          {formatInr(entry.pavan)}
-                        </span>
-                        <span
-                          className={`font-semibold w-14 text-right ${
-                            eUp
-                              ? isDarkCard
-                                ? 'text-emerald-400'
-                                : 'text-emerald-700'
-                              : eDown
-                                ? isDarkCard
-                                  ? 'text-rose-400'
-                                  : 'text-rose-700'
-                                : 'text-slate-400'
-                          }`}
-                        >
-                          {entry.changePavan === 0
-                            ? '—'
-                            : `${eUp ? '▲' : '▼'} ${formatSignedInr(entry.changePavan)}`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div
-            className={`mt-2.5 flex items-center justify-between text-[10px] tabular-nums ${
-              isDarkCard ? 'text-slate-400' : 'text-slate-600'
-            }`}
-          >
-            <span className="truncate">{data.updatedTimeIst}</span>
-            <span className="shrink-0">{data.sourceName}</span>
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 
+        {/* Live Exact Rendered Screenshot Preview (Drag to Reposition Photo when active) */}
+        <div
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          className={`relative mt-2.5 flex items-center justify-center rounded-2xl border border-slate-900/10 bg-black/5 p-2 dark:border-white/10 dark:bg-black/30 select-none ${
+            customPhoto ? 'cursor-grab active:cursor-grabbing touch-none' : ''
+          }`}
+        >
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="Gold price share card preview"
+              draggable={false}
+              className="max-h-[42vh] w-auto max-w-full rounded-xl object-contain shadow-lg"
+            />
+          ) : (
+            <div className="flex h-48 w-full items-center justify-center text-xs text-slate-500">
+              {lang === 'ml' ? 'തയ്യാറാക്കുന്നു...' : 'Generating screenshot...'}
+            </div>
+          )}
+          {rendering && previewUrl && (
+            <span className="absolute top-3 right-3 rounded-lg bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white">
+              Updating...
+            </span>
+          )}
+          {customPhoto && (
+            <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-2.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm whitespace-nowrap">
+              {lang === 'ml' ? 'ചിത്രം നീക്കാൻ ഡ്രാഗ് ചെയ്യുക' : 'Drag image to pan crop'}
+            </span>
+          )}
+        </div>
+
+        {/* Custom Photo Upload / Crop / Cache Controls */}
+        <div className="mt-2.5 rounded-2xl border border-slate-900/8 bg-white/55 p-2.5 dark:border-white/10 dark:bg-white/5 space-y-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleSelectPhoto}
+            className="hidden"
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-xl border border-slate-900/12 bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
+            >
+              <ImagePlus className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <span>
+                {customPhoto
+                  ? lang === 'ml'
+                    ? 'മറ്റൊരു ഫോട്ടോ തിരഞ്ഞെടുക്കുക'
+                    : 'Change Background Photo'
+                  : lang === 'ml'
+                    ? 'ഗാലറിയിൽ നിന്ന് ഫോട്ടോ ചേർക്കുക'
+                    : 'Add Custom Photo (Optional)'}
+              </span>
+            </button>
+
+            {customPhoto && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePhotoState((p) => ({...p, zoom: 1, offsetX: 0, offsetY: 0}))
+                  }
+                  title="Reset photo crop"
+                  className="inline-flex min-h-[30px] items-center gap-1 rounded-lg border border-slate-900/10 bg-white/75 px-2 py-1 text-[10.5px] font-semibold text-slate-700 hover:bg-white dark:border-white/12 dark:bg-white/10 dark:text-slate-200 cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                  <span>Center</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearPhoto}
+                  title="Clear cached photo"
+                  className="inline-flex min-h-[30px] items-center gap-1 rounded-lg border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-[10.5px] font-semibold text-rose-700 hover:bg-rose-500/20 dark:text-rose-300 cursor-pointer"
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden="true" />
+                  <span>{lang === 'ml' ? 'നീക്കുക' : 'Clear Photo'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {customPhoto && (
+            <div className="grid grid-cols-2 gap-3 pt-1 text-[10.5px]">
+              <label className="space-y-1">
+                <div className="flex items-center justify-between font-semibold text-slate-700 dark:text-slate-300">
+                  <span>{lang === 'ml' ? 'സൂം' : 'Crop Zoom'}</span>
+                  <span className="tabular-nums">{customPhoto.zoom.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="2.5"
+                  step="0.05"
+                  value={customPhoto.zoom}
+                  onChange={(e) =>
+                    updatePhotoState((p) => ({...p, zoom: Number(e.target.value)}))
+                  }
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <div className="flex items-center justify-between font-semibold text-slate-700 dark:text-slate-300">
+                  <span>{lang === 'ml' ? 'പശ്ചാത്തല മങ്ങൽ' : 'Photo Dim'}</span>
+                  <span className="tabular-nums">{Math.round(customPhoto.scrimOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.85"
+                  step="0.05"
+                  value={customPhoto.scrimOpacity}
+                  onChange={(e) =>
+                    updatePhotoState((p) => ({...p, scrimOpacity: Number(e.target.value)}))
+                  }
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
         {statusMsg && (
-          <p className="mt-2.5 text-center text-xs font-medium text-amber-700 dark:text-amber-400">
+          <p className="mt-2 text-center text-xs font-medium text-amber-700 dark:text-amber-400">
             {statusMsg}
           </p>
         )}
 
         {/* Action Buttons */}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {supportsWebShare && (
             <button
               type="button"
               onClick={handleNativeShare}
-              disabled={sharing}
-              className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 cursor-pointer"
+              disabled={sharing || rendering}
+              className="flex-1 min-h-[42px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 cursor-pointer"
             >
               <Share2 className="h-4 w-4" aria-hidden="true" />
               <span>
@@ -563,8 +498,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
                     ? 'തയ്യാറാക്കുന്നു...'
                     : 'Preparing...'
                   : lang === 'ml'
-                    ? 'ഷെയർ ചെയ്യുക'
-                    : 'Share via Device'}
+                    ? 'ചിത്രം ഷെയർ ചെയ്യുക'
+                    : 'Share Image'}
               </span>
             </button>
           )}
@@ -572,23 +507,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({open, onClose, data, lang
           <button
             type="button"
             onClick={handleDownloadPng}
-            className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-900/12 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
+            disabled={rendering}
+            className="min-h-[42px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-900/12 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
-            <span>{lang === 'ml' ? 'കാർഡ് സേവ്' : 'Save PNG'}</span>
+            <span>{lang === 'ml' ? 'സേവ് PNG' : 'Save PNG'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleCopyText}
-            className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-900/12 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
+            className="min-h-[42px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-900/12 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
           >
             {copied ? (
               <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
             ) : (
               <Copy className="h-4 w-4" aria-hidden="true" />
             )}
-            <span>{copied ? (lang === 'ml' ? 'പകർത്തി' : 'Copied') : lang === 'ml' ? 'പകർത്തുക' : 'Copy'}</span>
+            <span>{copied ? (lang === 'ml' ? 'പകർത്തി' : 'Copied') : lang === 'ml' ? 'ടെക്സ്റ്റ്' : 'Copy Text'}</span>
           </button>
         </div>
       </div>

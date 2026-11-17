@@ -1,5 +1,6 @@
 import type {AppLanguage, LatestGoldResponse} from '../types/gold';
 import {formatInr, formatSignedInr} from '../utils/format';
+import {resolveApiUrl} from './goldClient';
 
 export interface PriceAlertConfig {
   enabled: boolean; // Master notifications ON/OFF switch
@@ -141,6 +142,114 @@ export async function requestNotificationPermission(): Promise<NotificationCapab
   }
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+export async function syncServerPushSubscription(
+  config: PriceAlertConfig,
+  lang: AppLanguage = 'en',
+): Promise<{registered: boolean; reason?: string}> {
+  if (
+    typeof window === 'undefined' ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window) ||
+    !('Notification' in window)
+  ) {
+    return {registered: false, reason: 'browser-unsupported'};
+  }
+  if (Notification.permission !== 'granted') {
+    return {registered: false, reason: 'permission-not-granted'};
+  }
+
+  try {
+    const keyRes = await fetch(resolveApiUrl('api/push/public-key'), {cache: 'no-store'});
+    const ct = keyRes.headers.get('content-type') || '';
+    if (!keyRes.ok || !ct.includes('application/json')) {
+      return {registered: false, reason: 'no-push-server'};
+    }
+    const {publicKey} = (await keyRes.json()) as {publicKey?: string};
+    if (!publicKey) return {registered: false, reason: 'no-public-key'};
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+
+    const saveRes = await fetch(resolveApiUrl('api/push/subscribe'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        subscription: sub.toJSON(),
+        prefs: {
+          enabled: config.enabled,
+          notifyOnPriceChange: config.notifyOnPriceChange,
+          notifyDailySummary: config.notifyDailySummary,
+          targetEnabled: config.targetEnabled,
+          unit: config.unit,
+          direction: config.direction,
+          targetPrice: config.targetPrice,
+          lang,
+        },
+      }),
+    });
+    return {registered: saveRes.ok};
+  } catch {
+    return {registered: false, reason: 'network-error'};
+  }
+}
+
+export async function unregisterServerPushSubscription(): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    await fetch(resolveApiUrl('api/push/unsubscribe'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({endpoint: sub.endpoint}),
+    }).catch(() => {});
+  } catch {
+    // Ignore cleanup error when offline
+  }
+}
+
+export async function sendServerTestPush(lang: AppLanguage = 'en'): Promise<boolean> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return false;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return false;
+    const res = await fetch(resolveApiUrl('api/push/test'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({endpoint: sub.endpoint, lang}),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as {ok?: boolean};
+    return Boolean(body.ok);
+  } catch {
+    return false;
+  }
+}
+
 export function buildTrendMeta(deltaPavan: number): {
   trendDirection: 'up' | 'down' | 'flat';
   trendSymbol: '▲' | '▼' | '●';
@@ -277,7 +386,6 @@ export async function evaluatePriceAlerts(
   const boardKey = `${data.current.dateLabel}|${data.scheduleLabel}`;
   const prevBaseline = readStoredBaseline();
 
-  // Compute true observed delta if rate changed during the day vs previous board price
   const observedDeltaPavan =
     prevBaseline && prevBaseline.pavan22k > 0 && prevBaseline.pavan22k !== data.current.pavan22k
       ? data.current.pavan22k - prevBaseline.pavan22k
@@ -312,7 +420,6 @@ export async function evaluatePriceAlerts(
 
   const reasons: Array<'change' | 'daily' | 'target'> = [];
 
-  // 1. Instant Price Change Alert (when rate differs from previous stored check)
   const priceChangedSinceLastCheck =
     config.notifyOnPriceChange &&
     typeof config.lastSeenPavan === 'number' &&
@@ -323,13 +430,11 @@ export async function evaluatePriceAlerts(
     reasons.push('change');
   }
 
-  // 2. Daily Rate Update Alert (once per new board date/session)
   const dailyKey = `${boardKey}:${data.current.pavan22k}`;
   if (config.notifyDailySummary && config.lastDailyKey !== dailyKey) {
     reasons.push('daily');
   }
 
-  // 3. Custom Price Target Alert (once per target key)
   const targetKey = `${data.current.dateLabel}:${config.unit}:${config.direction}:${config.targetPrice}`;
   if (targetMatchedNow && config.lastTargetKey !== targetKey) {
     reasons.push('target');

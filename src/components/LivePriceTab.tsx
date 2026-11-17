@@ -20,9 +20,11 @@ import type {
 } from '../types/gold';
 import {X} from 'lucide-react';
 import type {ActiveAlertEvent, PriceAlertConfig} from '../services/priceAlerts';
+import type {DataSourceMode} from '../services/goldClient';
 import {formatInr, formatSignedInr} from '../utils/format';
 import {MarketOutlookTile} from './MarketOutlookTile';
 import {PriceChart, type ChartPoint} from './PriceChart';
+import {SyncTimerPill} from './SyncTimerPill';
 
 interface LivePriceTabProps {
   lang: AppLanguage;
@@ -31,6 +33,10 @@ interface LivePriceTabProps {
   loading: boolean;
   refreshing: boolean;
   fromCache: boolean;
+  dataMode?: DataSourceMode;
+  streamConnected?: boolean;
+  lastSyncedAt?: number | null;
+  autoSyncIntervalMs?: number;
   error: string | null;
   preferredSource: PreferredSource;
   alertConfig: PriceAlertConfig | null;
@@ -77,6 +83,10 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
   loading,
   refreshing,
   fromCache,
+  dataMode = 'live-api',
+  streamConnected = false,
+  lastSyncedAt = null,
+  autoSyncIntervalMs = 150_000,
   error,
   preferredSource,
   alertConfig,
@@ -234,15 +244,27 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
       )}
 
       {/* Compact Adaptive Hero Tile */}
-      <section className="liquid-glass rounded-2xl sm:rounded-3xl p-3.5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-2.5">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
+      <section className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1 text-[10.5px] sm:text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold text-amber-700 dark:text-amber-400">{t.kicker}</span>
               <span aria-hidden="true">·</span>
               <span>{data.current.dateLabel}</span>
               <span aria-hidden="true">·</span>
               <span>{data.scheduleLabel}</span>
+              {dataMode === 'static-snapshot' && !streamConnected && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    onClick={onOpenAlertModal}
+                    className="font-medium text-amber-700 hover:underline dark:text-amber-400 cursor-pointer"
+                  >
+                    {lang === 'ml' ? 'സ്നാപ്പ്ഷോട്ട്' : 'Snapshot'}
+                  </button>
+                </>
+              )}
               {fromCache && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -250,36 +272,33 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
                 </>
               )}
             </div>
-            <h1 className="mt-0.5 font-display text-lg sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="font-display text-base sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight mt-0.5">
               {t.title}
             </h1>
-            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 tabular-nums truncate">
+            <p className="text-[10.5px] sm:text-xs text-slate-500 dark:text-slate-400 tabular-nums truncate">
               {data.updatedTimeIst} · {data.sourceName}
               {data.fallbackUsed ? ` ${t.fallbackSuffix}` : ''}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+            {(dataMode === 'live-api' || streamConnected) && (
+              <SyncTimerPill
+                lang={lang}
+                lastSyncedAt={lastSyncedAt}
+                intervalMs={autoSyncIntervalMs}
+                refreshing={refreshing}
+                streamConnected={streamConnected}
+                onSyncNow={() => onRefresh(showSources)}
+              />
+            )}
             <button
               type="button"
               onClick={() => setShowSources((v) => !v)}
-              className="inline-flex min-h-[36px] sm:min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-900/10 bg-white/60 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-slate-700 transition hover:bg-white dark:border-white/12 dark:bg-white/8 dark:text-slate-200 whitespace-nowrap cursor-pointer"
+              className="inline-flex min-h-[30px] sm:min-h-[34px] items-center gap-1 rounded-xl border border-slate-900/10 bg-white/60 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-white dark:border-white/12 dark:bg-white/8 dark:text-slate-200 whitespace-nowrap cursor-pointer"
             >
-              <Server className="h-3.5 w-3.5" aria-hidden="true" />
+              <Server className="h-3 w-3 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
               <span>{t.sourcesBtn}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onRefresh(showSources)}
-              disabled={refreshing}
-              aria-label="Refresh latest gold price"
-              className="inline-flex min-h-[36px] sm:min-h-[38px] items-center gap-1.5 rounded-xl bg-amber-600 px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 whitespace-nowrap cursor-pointer"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
-                aria-hidden="true"
-              />
-              <span>{refreshing ? t.syncingBtn : t.refreshBtn}</span>
             </button>
           </div>
         </div>
@@ -352,7 +371,7 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
         )}
 
         {/* Side-by-Side 2-Column Rate Tiles — Fixed clean wrapping for 24K/18K rates with metallic shimmer */}
-        <div className="mt-3.5 grid grid-cols-2 gap-2.5 sm:gap-4">
+        <div className="mt-2.5 sm:mt-3.5 grid grid-cols-2 gap-2.5 sm:gap-4">
           <div className="gold-shimmer rounded-xl sm:rounded-2xl border border-amber-600/25 bg-gradient-to-br from-amber-500/14 via-amber-400/6 to-transparent p-3 sm:p-4 dark:border-amber-400/25 dark:from-amber-400/16">
             <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-[11px] sm:text-xs font-semibold text-slate-700 dark:text-slate-300">

@@ -23,6 +23,13 @@ import {
   getLatestGoldWithFallback,
   getLiveSpotMarket,
 } from './server/goldService.ts';
+import {processCandidateLatest, registerSseClient, startGoldWatcher} from './server/goldWatcher.ts';
+import {
+  getVapidPublicKey,
+  removePushSubscription,
+  sendTestPushToEndpoint,
+  upsertPushSubscription,
+} from './server/pushService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,17 +67,112 @@ async function startServer() {
     res.json(spec);
   });
 
-  // Live Kerala Gold Price + Multi-Source Fallback
+  // Live Kerala Gold Price + Multi-Source Fallback + Force Refresh Bypass
   app.get('/api/gold/latest', async (req, res) => {
     try {
       const sourceParam = sanitizePreferredSource(req.query.source);
       const probeParam = req.query.probe === 'true';
-      const data = await getLatestGoldWithFallback(sourceParam, probeParam);
-      res.setHeader('Cache-Control', 'public, max-age=45');
+      const forceRefresh = req.query.refresh === 'true' || req.query.force === 'true';
+      const data = await getLatestGoldWithFallback(sourceParam, probeParam, forceRefresh);
+      if (sourceParam === 'auto') {
+        void processCandidateLatest(data);
+      }
+      res.setHeader('Cache-Control', forceRefresh ? 'no-store' : 'public, max-age=30');
       res.json(data);
     } catch (error) {
       res.status(502).json({
         error: error instanceof Error ? error.message : 'Unable to fetch live gold prices.',
+      });
+    }
+  });
+
+  // Real-Time Server-Sent Events (SSE) stream for instant price & alert broadcasts
+  app.get('/api/gold/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const unregister = registerSseClient(res);
+    req.on('close', unregister);
+  });
+
+  // Web Push (VAPID) Subscription Management for Closed-App Background Alerts
+  app.get('/api/push/public-key', (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        supported: true,
+        publicKey: getVapidPublicKey(),
+      });
+    } catch (error) {
+      res.status(500).json({
+        supported: false,
+        error: error instanceof Error ? error.message : 'Push keys unavailable.',
+      });
+    }
+  });
+
+  app.post('/api/push/subscribe', (req, res) => {
+    try {
+      const body = (req.body && typeof req.body === 'object' ? req.body : {}) as {
+        subscription?: {endpoint?: string; keys?: {p256dh?: string; auth?: string}};
+        prefs?: Record<string, unknown>;
+      };
+      if (
+        !body.subscription?.endpoint ||
+        !body.subscription?.keys?.p256dh ||
+        !body.subscription?.keys?.auth
+      ) {
+        res.status(400).json({error: 'Invalid Web Push subscription payload.'});
+        return;
+      }
+      const {count} = upsertPushSubscription(
+        body.subscription as Parameters<typeof upsertPushSubscription>[0],
+        body.prefs || {},
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ok: true, subscribers: count});
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to save push subscription.',
+      });
+    }
+  });
+
+  app.post('/api/push/unsubscribe', (req, res) => {
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as {endpoint?: string};
+    if (!body.endpoint) {
+      res.status(400).json({error: 'Missing subscription endpoint.'});
+      return;
+    }
+    const result = removePushSubscription(body.endpoint);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ok: true, ...result});
+  });
+
+  app.post('/api/push/test', async (req, res) => {
+    try {
+      const body = (req.body && typeof req.body === 'object' ? req.body : {}) as {
+        endpoint?: string;
+        lang?: string;
+      };
+      if (!body.endpoint) {
+        res.status(400).json({error: 'Missing subscription endpoint.'});
+        return;
+      }
+      const latest = await getLatestGoldWithFallback('auto', false, false);
+      const sent = await sendTestPushToEndpoint(
+        body.endpoint,
+        latest,
+        body.lang === 'ml' ? 'ml' : 'en',
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ok: sent});
+    } catch (error) {
+      res.status(502).json({
+        error: error instanceof Error ? error.message : 'Unable to send test Web Push notification.',
       });
     }
   });
@@ -81,13 +183,14 @@ async function startServer() {
       const sourceParam = sanitizePreferredSource(req.query.source);
       const format = String(req.query.format || 'json').toLowerCase();
       const lang = req.query.lang === 'ml' ? 'ml' : 'en';
+      const forceRefresh = req.query.refresh === 'true' || req.query.force === 'true';
 
       const [latest, spot] = await Promise.all([
-        getLatestGoldWithFallback(sourceParam, false),
+        getLatestGoldWithFallback(sourceParam, false, forceRefresh),
         getLiveSpotMarket().catch(() => null),
       ]);
       const payload = buildShortcutPayload(latest, spot);
-      res.setHeader('Cache-Control', 'public, max-age=45');
+      res.setHeader('Cache-Control', forceRefresh ? 'no-store' : 'public, max-age=30');
 
       if (format === 'text' || format === 'txt') {
         res.type('text/plain; charset=utf-8').send(
@@ -105,10 +208,11 @@ async function startServer() {
   });
 
   // Source Availability & Latency Probes
-  app.get('/api/gold/sources', async (_req, res) => {
+  app.get('/api/gold/sources', async (req, res) => {
     try {
-      const probes = await getAllSourceProbes();
-      res.setHeader('Cache-Control', 'public, max-age=60');
+      const forceRefresh = req.query.refresh === 'true' || req.query.force === 'true';
+      const probes = await getAllSourceProbes(forceRefresh);
+      res.setHeader('Cache-Control', forceRefresh ? 'no-store' : 'public, max-age=60');
       res.json({probes, checkedAt: new Date().toISOString()});
     } catch (error) {
       res.status(500).json({
@@ -207,7 +311,7 @@ async function startServer() {
         return;
       }
 
-      const latest = await getLatestGoldWithFallback('auto', false);
+      const latest = await getLatestGoldWithFallback('auto', false, req.query.refresh === 'true');
       const {pavan22k, gram22k, changePavan, changeGram, dateLabel} = latest.current;
       const arrow = latest.current.direction === 'up' ? '▲' : latest.current.direction === 'down' ? '▼' : '●';
       const colorEmoji = latest.current.direction === 'up' ? '🟢' : latest.current.direction === 'down' ? '🔴' : '🟡';
@@ -314,6 +418,7 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Kerala Gold Price server running on http://0.0.0.0:${PORT}`);
+    startGoldWatcher();
   });
 }
 

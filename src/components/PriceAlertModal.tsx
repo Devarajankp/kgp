@@ -13,6 +13,13 @@ import {
 import React, {useEffect, useMemo, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {
+  getApiBaseUrl,
+  hasCustomApiBaseUrl,
+  isStaticPagesEnvironment,
+  resolveApiUrl,
+  setApiBaseUrl,
+} from '../services/goldClient';
+import {
   clearPriceAlert,
   createDefaultAlertConfig,
   dispatchGoldNotification,
@@ -21,6 +28,9 @@ import {
   readPriceAlert,
   requestNotificationPermission,
   savePriceAlert,
+  sendServerTestPush,
+  syncServerPushSubscription,
+  unregisterServerPushSubscription,
   type ActiveAlertEvent,
   type NotificationCapability,
   type PriceAlertConfig,
@@ -33,8 +43,10 @@ interface PriceAlertModalProps {
   onClose: () => void;
   data: LatestGoldResponse | null;
   lang: AppLanguage;
+  streamConnected?: boolean;
   onAlertChanged: (config: PriceAlertConfig | null) => void;
   onTriggerPreviewBanner?: (event: ActiveAlertEvent) => void;
+  onApiServerChanged?: () => void;
 }
 
 export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
@@ -42,8 +54,10 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
   onClose,
   data,
   lang,
+  streamConnected = false,
   onAlertChanged,
   onTriggerPreviewBanner,
+  onApiServerChanged,
 }) => {
   const currentPavan = data?.current.pavan22k || 100320;
   const currentGram = data?.current.gram22k || 12540;
@@ -58,10 +72,15 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
   const [capability, setCapability] = useState<NotificationCapability>('default');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [copiedShortcut, setCopiedShortcut] = useState(false);
+  const [pushRegistered, setPushRegistered] = useState(false);
+  const [showServerUrlBox, setShowServerUrlBox] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState<string>('');
 
   useEffect(() => {
     if (!open) return;
     setCapability(getNotificationCapability());
+    setServerUrlInput(hasCustomApiBaseUrl() ? getApiBaseUrl().replace(/\/+$/, '') : '');
+    setShowServerUrlBox(isStaticPagesEnvironment());
     const existing = readPriceAlert();
     if (existing) {
       setEnabled(existing.enabled);
@@ -87,18 +106,16 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
 
   const shortcutApiUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    const origin = window.location.origin;
-    const base = import.meta.env.BASE_URL || '/';
-    const isStaticPages = window.location.hostname.endsWith('github.io');
-    if (isStaticPages) {
-      return `${origin}${base}api/shortcut.json`;
+    if (isStaticPagesEnvironment()) {
+      return `${window.location.origin}${import.meta.env.BASE_URL}api/shortcut.json`;
     }
     const qs = new URLSearchParams({unit, direction, format: 'text'});
     if (targetEnabled && Number(targetInput) > 0) {
       qs.set('target', String(Math.round(Number(targetInput))));
     }
-    return `${origin}${base}api/gold/alert-check?${qs.toString()}`;
-  }, [unit, direction, targetEnabled, targetInput]);
+    const resolved = resolveApiUrl(`api/gold/alert-check?${qs.toString()}`);
+    return resolved.startsWith('http') ? resolved : `${window.location.origin}${resolved}`;
+  }, [unit, direction, targetEnabled, targetInput, serverUrlInput]);
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -122,6 +139,8 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
       };
       savePriceAlert(updated);
       onAlertChanged(updated);
+      void unregisterServerPushSubscription();
+      setPushRegistered(false);
       setFeedback(lang === 'ml' ? 'എല്ലാ അലേർട്ടുകളും ഓഫ് ചെയ്തു.' : 'All price notifications turned OFF.');
     }
   };
@@ -160,8 +179,17 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
     onAlertChanged(config);
 
     if (!enabled) {
+      await unregisterServerPushSubscription();
+      setPushRegistered(false);
       setFeedback(lang === 'ml' ? 'അലേർട്ട് ഓഫ് ചെയ്തു.' : 'Notifications paused (OFF).');
       return;
+    }
+
+    let pushRegOk = false;
+    if (cap === 'granted') {
+      const syncRes = await syncServerPushSubscription(config, lang);
+      pushRegOk = syncRes.registered;
+      setPushRegistered(pushRegOk);
     }
 
     const activeRate = unit === 'pavan' ? currentPavan : currentGram;
@@ -191,9 +219,13 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
 
     if (cap === 'granted') {
       setFeedback(
-        lang === 'ml'
-          ? 'നോട്ടിഫിക്കേഷനുകൾ സജീവമായി (1 പവൻ & 1 ഗ്രാം).'
-          : 'Alerts active! Instant 1 Pavan & 1 Gram notifications are enabled.',
+        pushRegOk
+          ? lang === 'ml'
+            ? 'ബാക്ക്ഗ്രൗണ്ട് വെബ് പുഷ് സജീവം! ആപ്പ് അടച്ചാലും വില മാറുമ്പോൾ നോട്ടിഫിക്കേഷൻ ലഭിക്കും.'
+            : 'Background Web Push active! You will be notified instantly even when the app is closed.'
+          : lang === 'ml'
+            ? 'ഇൻ-ആപ്പ് & ബ്രൗസർ അലേർട്ടുകൾ സജീവം!'
+            : 'Alerts active! Live notifications enabled (connect a Live Server URL for closed-app push).',
       );
     } else if (cap === 'ios-needs-install') {
       setFeedback(
@@ -228,6 +260,20 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
       onTriggerPreviewBanner?.(demoEvent);
 
       if (cap === 'granted') {
+        const currentCfg = readPriceAlert() || createDefaultAlertConfig(currentPavan);
+        const syncRes = await syncServerPushSubscription({...currentCfg, enabled: true}, lang);
+        if (syncRes.registered) {
+          setPushRegistered(true);
+          const pushed = await sendServerTestPush(lang);
+          if (pushed) {
+            setFeedback(
+              lang === 'ml'
+                ? 'സർവർ വെബ് പുഷും ഇൻ-ആപ്പ് അലേർട്ടും അയച്ചു!'
+                : 'Server Web Push + In-App alert dispatched!',
+            );
+            return;
+          }
+        }
         const ok = await dispatchGoldNotification(demoEvent.title, demoEvent.body, 'kgp-test-alert');
         if (ok) {
           setFeedback(
@@ -251,6 +297,16 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
     );
   };
 
+  const handleSaveServerUrl = () => {
+    const normalized = setApiBaseUrl(serverUrlInput);
+    onApiServerChanged?.();
+    setFeedback(
+      normalized
+        ? `Connected Live Server: ${normalized}`
+        : 'Cleared custom server URL (using built-in origin/snapshot).',
+    );
+  };
+
   const handleCopyShortcutUrl = async () => {
     try {
       await navigator.clipboard.writeText(shortcutApiUrl);
@@ -264,6 +320,8 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
   const handleResetAll = () => {
     clearPriceAlert();
     setEnabled(false);
+    setPushRegistered(false);
+    void unregisterServerPushSubscription();
     onAlertChanged(null);
     setFeedback(lang === 'ml' ? 'വില അലേർട്ട് നീക്കം ചെയ്തു.' : 'All alerts cleared and disabled.');
   };
@@ -520,6 +578,49 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
             >
               {lang === 'ml' ? 'ടെസ്റ്റ് അലേർട്ട്' : 'Test Alert'}
             </button>
+          </div>
+
+          {/* Live Push Server Connection (optional for GitHub Pages static deployments) */}
+          <div className="rounded-xl border border-slate-900/8 bg-white/50 p-2.5 text-[11px] dark:border-white/10 dark:bg-white/5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {streamConnected || pushRegistered
+                  ? 'Live Stream & Push Server Connected'
+                  : isStaticPagesEnvironment()
+                    ? 'Static Mode (GitHub Pages)'
+                    : 'Live API Connection'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowServerUrlBox((v) => !v)}
+                className="font-semibold text-amber-700 hover:underline dark:text-amber-400 cursor-pointer"
+              >
+                {showServerUrlBox ? 'Hide' : 'Configure Server URL'}
+              </button>
+            </div>
+            {showServerUrlBox && (
+              <div className="mt-2 space-y-1.5">
+                <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
+                  GitHub Pages is static HTML. For instant live refresh &amp; closed-app Web Push when any website changes prices, link your hosted KGP Node server URL (e.g. Render / Railway):
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="url"
+                    placeholder="https://your-kgp-server.onrender.com"
+                    value={serverUrlInput}
+                    onChange={(e) => setServerUrlInput(e.target.value)}
+                    className="flex-1 min-h-[34px] rounded-lg border border-slate-900/12 bg-white/85 px-2.5 py-1 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveServerUrl}
+                    className="min-h-[34px] rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 cursor-pointer"
+                  >
+                    Connect
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* iPhone Shortcut / API Automation Copy */}

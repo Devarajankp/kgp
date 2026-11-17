@@ -30,7 +30,10 @@ All endpoints support **CORS (`*`)**, per-IP rate limiting (`120 req/min`), stri
 | `/api/health` | `GET` | Server health, API version, and active provider list |
 | `/api/openapi.json` | `GET` | Full **OpenAPI 3.1.0** specification for web apps & SDK generators |
 | `/api/gold/shortcut` | `GET` | Flat zero-nesting JSON (or `?format=text&lang=en\|ml` plain text) built for **Apple iPhone Shortcuts**, Scriptable & KWGT widgets |
-| `/api/gold/latest` | `GET` | Full Kerala 22K/24K/18K rates, intraday logs, high/low & optional `?source=&probe=true` |
+| `/api/gold/latest` | `GET` | Full Kerala 22K/24K/18K rates, intraday logs, high/low & optional `?source=&probe=true&refresh=true` |
+| `/api/gold/stream` | `GET` | **Server-Sent Events (SSE)** real-time stream pushing `gold-update` whenever any provider updates |
+| `/api/push/public-key` | `GET` | Returns the server's **VAPID Public Key** for browser & PWA background Web Push |
+| `/api/push/subscribe` | `POST` | Subscribes device + alert preferences for closed-app Web Push notifications |
 | `/api/gold/history` | `GET` | `?mode=daily\|monthly\|yearly&year=2026&month=november` historical archive |
 | `/api/gold/spot` | `GET` | Live international `XAU/INR`, `USD/INR`, 24h change %, and day high/low |
 | `/api/gold/sources` | `GET` | Live status & latency probe across all 8 Kerala providers |
@@ -38,7 +41,7 @@ All endpoints support **CORS (`*`)**, per-IP rate limiting (`120 req/min`), stri
 | `/api/gold/alert-check` | `GET` | Daily, rate-change & optional target alert check (`?target=98000&unit=pavan&direction=below&prevPavan=100920&format=text&lang=en\|ml`) with dual 1 Pavan & 1 Gram color-coded symbols |
 
 ### Static GitHub Pages JSON Endpoints (No Node Server Needed)
-When deployed to **GitHub Pages**, `.github/workflows/deploy-pages.yml` automatically refreshes these static JSON files daily at **04:15 UTC (09:45 IST)**:
+When deployed to **GitHub Pages**, `.github/workflows/deploy-pages.yml` automatically refreshes these static JSON files across Kerala's morning & afternoon bullion update windows (**09:15 AM – 06:00 PM IST**):
 - `https://<username>.github.io/<repo>/api/shortcut.json`
 - `https://<username>.github.io/<repo>/api/latest.json`
 - `https://<username>.github.io/<repo>/api/spot.json`

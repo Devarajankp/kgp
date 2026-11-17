@@ -41,6 +41,15 @@
     background-color: var(--kgp-bg);
     color: var(--kgp-ink);
   }
+
+  /* Prevent iOS Safari / mobile browsers from auto-zooming when focusing inputs */
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 .font-display {

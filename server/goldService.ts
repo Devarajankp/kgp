@@ -129,20 +129,54 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function getTodayIstInfo(): {
+  isoDate: string;
+  dateLabel: string;
+  monthLabel: string;
+  monthKey: string;
+  year: number;
+} {
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const year = istNow.getUTCFullYear();
+  const monthIdx = istNow.getUTCMonth();
+  const day = istNow.getUTCDate();
+  const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const shortMon = shortMonthNames[monthIdx] || 'Jan';
+  const monthKey = MONTHS[monthIdx] || 'january';
+  const prettyMonth = monthKey.charAt(0).toUpperCase() + monthKey.slice(1);
+  return {
+    isoDate: `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    dateLabel: `${day}-${shortMon}-${String(year).slice(-2)}`,
+    monthLabel: `${prettyMonth} ${year}`,
+    monthKey,
+    year,
+  };
+}
+
 async function fetchTextWithTimeout(
   url: string,
   timeoutMs = 8000,
+  forceRefresh = false,
 ): Promise<{ok: boolean; status: number; text: string; lastModified: string | null; redirectedUrl: string}> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    const targetUrl = forceRefresh
+      ? `${url}${url.includes('?') ? '&' : '?'}_kgp_ts=${Date.now()}`
+      : url;
+    const headers: Record<string, string> = {
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,application/javascript,application/json;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+    if (forceRefresh) {
+      headers['Cache-Control'] = 'no-cache, no-store, max-age=0';
+      headers.Pragma = 'no-cache';
+    }
+    const res = await fetch(targetUrl, {
       signal: controller.signal,
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml,application/javascript,application/json;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+      cache: forceRefresh ? 'no-store' : 'default',
+      headers,
     });
     const text = await res.text();
     return {
@@ -470,7 +504,7 @@ function parseLiveGoldKeralaHistoryHtml(html: string): DailyRateEntry[] {
   });
 }
 
-async function probeKeralaGold(): Promise<{
+async function probeKeralaGold(forceRefresh = false): Promise<{
   probe: SourceProbeResult;
   data?: LatestGoldResponse;
 }> {
@@ -478,8 +512,8 @@ async function probeKeralaGold(): Promise<{
   const url = 'https://www.keralagold.com/daily-gold-prices.htm';
   try {
     const [dailyRes, jsRes] = await Promise.all([
-      fetchTextWithTimeout(url, 8000),
-      fetchTextWithTimeout('https://www.keralagold.com/gold-price.js', 5000).catch(() => null),
+      fetchTextWithTimeout(url, 8000, forceRefresh),
+      fetchTextWithTimeout('https://www.keralagold.com/gold-price.js', 5000, forceRefresh).catch(() => null),
     ]);
     const latencyMs = Date.now() - start;
 
@@ -835,14 +869,17 @@ function extractRatesForSecondary(
   return null;
 }
 
-async function probeSecondarySource(id: SecondarySourceId): Promise<{
+async function probeSecondarySource(
+  id: SecondarySourceId,
+  forceRefresh = false,
+): Promise<{
   probe: SourceProbeResult;
   extracted?: SecondaryExtraction;
 }> {
   const cfg = SECONDARY_CONFIGS[id];
   const start = Date.now();
   try {
-    const res = await fetchTextWithTimeout(cfg.url, 8000);
+    const res = await fetchTextWithTimeout(cfg.url, 8000, forceRefresh);
     const latencyMs = Date.now() - start;
 
     if (res.status === 403 || /cf-browser-verification|just a moment|attention required/i.test(res.text.slice(0, 4000))) {
@@ -880,7 +917,11 @@ async function probeSecondarySource(id: SecondarySourceId): Promise<{
       let historyEntries: DailyRateEntry[] | undefined;
       if (id === 'livegoldkerala') {
         try {
-          const histRes = await fetchTextWithTimeout('https://www.livegoldkerala.com/gold-rate-history', 6000);
+          const histRes = await fetchTextWithTimeout(
+            'https://www.livegoldkerala.com/gold-rate-history',
+            6000,
+            forceRefresh,
+          );
           if (histRes.ok) {
             historyEntries = parseLiveGoldKeralaHistoryHtml(histRes.text);
           }
@@ -1015,16 +1056,99 @@ function buildResponseFromSecondary(
   };
 }
 
+function mergeNewerRateOntoPrimary(
+  baseKgData: LatestGoldResponse,
+  winner: {
+    id: SecondarySourceId;
+    probe: SourceProbeResult;
+    extracted: SecondaryExtraction;
+  },
+  chain: SourceProbeResult[],
+  isSameDayRevision: boolean,
+): LatestGoldResponse {
+  const todayIst = getTodayIstInfo();
+  const gram22k = winner.extracted.gram22k;
+  const pavan22k = winner.extracted.pavan22k || Math.round(gram22k * 8);
+  const gram24kEstimate = winner.extracted.gram24k || Math.round(gram22k * (24 / 22));
+  const pavan24kEstimate = gram24kEstimate * 8;
+  const gram18kEstimate = winner.extracted.gram18k || Math.round(gram22k * (18 / 22));
+
+  const baseEntries = [...(baseKgData.entries || [])];
+  const prevEntry = baseEntries[baseEntries.length - 1] || null;
+  const prevPavan = prevEntry?.pavan ?? baseKgData.current.pavan22k;
+  const prevGram = prevEntry?.gram ?? baseKgData.current.gram22k;
+  const changePavan = round2(pavan22k - prevPavan);
+  const changeGram = round2(gram22k - prevGram);
+  const changePercent = prevPavan > 0 ? round2((changePavan / prevPavan) * 100) : 0;
+  const direction = computeDirection(changePavan);
+
+  const syntheticEntry: DailyRateEntry = {
+    id: `live-${todayIst.isoDate}-${pavan22k}`,
+    dateLabel: todayIst.dateLabel,
+    isoDate: todayIst.isoDate,
+    session: isSameDayRevision ? 'Intraday Update' : 'Today',
+    isToday: true,
+    isYesterday: false,
+    pavan: pavan22k,
+    gram: gram22k,
+    changePavan,
+    changeGram,
+    changePercent,
+    direction,
+  };
+
+  const mergedEntries = baseEntries.map((e) => ({...e, isToday: false}));
+  mergedEntries.push(syntheticEntry);
+
+  const maxE = mergedEntries.reduce((a, b) => (b.pavan > a.pavan ? b : a), mergedEntries[0]);
+  const minE = mergedEntries.reduce((a, b) => (b.pavan < a.pavan ? b : a), mergedEntries[0]);
+
+  return {
+    source: winner.id,
+    sourceName: winner.probe.name,
+    sourceUrl: winner.probe.url,
+    fallbackUsed: true,
+    fallbackChain: chain,
+    fetchedAt: new Date().toISOString(),
+    serverLastModified: null,
+    updatedTimeIst: formatIstFromHeader(null),
+    scheduleLabel: isSameDayRevision ? 'Intraday Live Update' : 'Morning Live Update',
+    monthLabel: todayIst.monthLabel || baseKgData.monthLabel,
+    year: todayIst.year || baseKgData.year,
+    monthKey: todayIst.monthKey || baseKgData.monthKey,
+    current: {
+      dateLabel: todayIst.dateLabel,
+      session: syntheticEntry.session,
+      gram22k,
+      pavan22k,
+      gram24kEstimate,
+      pavan24kEstimate,
+      gram18kEstimate,
+      changePavan,
+      changeGram,
+      changePercent,
+      direction,
+      trendLabel: direction === 'up' ? 'Upward' : direction === 'down' ? 'Downward' : 'Steady',
+    },
+    monthlyHigh: maxE ? {pavan: maxE.pavan, gram: maxE.gram, dateLabel: maxE.dateLabel} : baseKgData.monthlyHigh,
+    monthlyLow: minE ? {pavan: minE.pavan, gram: minE.gram, dateLabel: minE.dateLabel} : baseKgData.monthlyLow,
+    entries: mergedEntries,
+  };
+}
+
+const FAST_CONSENSUS_SOURCES: SecondarySourceId[] = ['livegoldkerala', 'goodreturns', 'groww', 'josalukkas'];
+
 const latestCache = new Map<string, {data: LatestGoldResponse; cachedAt: number}>();
-const LATEST_CACHE_TTL_MS = 45_000;
+const LATEST_CACHE_TTL_MS = 30_000;
 
 export async function getLatestGoldWithFallback(
   preferred: PreferredSource = 'auto',
   includeProbes = false,
+  forceRefresh = false,
 ): Promise<LatestGoldResponse> {
   const cacheKey = `${preferred}:${includeProbes ? 'probes' : 'fast'}`;
   const cached = latestCache.get(cacheKey);
-  if (cached && Date.now() - cached.cachedAt < LATEST_CACHE_TTL_MS) {
+  if (!forceRefresh && cached && Date.now() - cached.cachedAt < LATEST_CACHE_TTL_MS) {
     return cached.data;
   }
 
@@ -1032,8 +1156,8 @@ export async function getLatestGoldWithFallback(
 
   if (preferred !== 'auto' && preferred !== 'keralagold') {
     const [secondary, kg] = await Promise.all([
-      probeSecondarySource(preferred),
-      probeKeralaGold(),
+      probeSecondarySource(preferred, forceRefresh),
+      probeKeralaGold(forceRefresh),
     ]);
     chain.push(secondary.probe, kg.probe);
 
@@ -1064,29 +1188,107 @@ export async function getLatestGoldWithFallback(
     throw new Error(`Preferred source ${preferred} and primary source are currently unreachable.`);
   }
 
-  const kg = await probeKeralaGold();
-  chain.push(kg.probe);
+  // Probe KeralaGold + fast reliable Kerala consensus providers in parallel
+  const secondaryToProbe: SecondarySourceId[] = includeProbes
+    ? SECONDARY_ORDER
+    : FAST_CONSENSUS_SOURCES;
 
-  if (includeProbes || !kg.data) {
-    const secondaryResults = await Promise.all(SECONDARY_ORDER.map((id) => probeSecondarySource(id)));
-    for (const r of secondaryResults) chain.push(r.probe);
+  const [kg, ...secondaryResults] = await Promise.all([
+    probeKeralaGold(forceRefresh),
+    ...secondaryToProbe.map((id) => probeSecondarySource(id, forceRefresh)),
+  ]);
 
-    if (!kg.data) {
-      const healthy = secondaryResults.find((r) => r.extracted);
-      if (healthy?.extracted) {
-        const result = buildResponseFromSecondary(
-          healthy.probe.id as SecondarySourceId,
-          healthy.probe,
-          healthy.extracted,
-          chain,
-          true,
-        );
-        latestCache.set(cacheKey, {data: result, cachedAt: Date.now()});
-        return result;
-      }
-      if (cached) return cached.data;
-      throw new Error('All configured Kerala gold rate sources are currently unreachable.');
+  chain.push(kg.probe, ...secondaryResults.map((r) => r.probe));
+
+  if (!kg.data) {
+    const healthy = secondaryResults.find((r) => r.extracted);
+    if (healthy?.extracted) {
+      const result = buildResponseFromSecondary(
+        healthy.probe.id as SecondarySourceId,
+        healthy.probe,
+        healthy.extracted,
+        chain,
+        true,
+      );
+      latestCache.set(cacheKey, {data: result, cachedAt: Date.now()});
+      return result;
     }
+    if (cached) return cached.data;
+    throw new Error('All configured Kerala gold rate sources are currently unreachable.');
+  }
+
+  // Check if a secondary source has already updated ahead of KeralaGold.com!
+  const todayIst = getTodayIstInfo();
+  const kgLatestEntry = kg.data.entries[kg.data.entries.length - 1];
+  const kgPrevEntry =
+    kg.data.entries.length >= 2 ? kg.data.entries[kg.data.entries.length - 2] : null;
+  const kgIsBehindToday = Boolean(kgLatestEntry?.isoDate && kgLatestEntry.isoDate < todayIst.isoDate);
+  const kgCurrentPavan = kg.data.current.pavan22k;
+
+  // Count votes for KeralaGold's current rate vs fast consensus candidates
+  const fastSecondarySet = new Set<SecondarySourceId>(FAST_CONSENSUS_SOURCES);
+  const fastOnline = secondaryResults.filter(
+    (r): r is {probe: SourceProbeResult; extracted: SecondaryExtraction} =>
+      Boolean(r.extracted && fastSecondarySet.has(r.probe.id as SecondarySourceId)),
+  );
+
+  const votesForKg =
+    1 +
+    fastOnline.filter(
+      (r) => (r.extracted.pavan22k || Math.round(r.extracted.gram22k * 8)) === kgCurrentPavan,
+    ).length;
+
+  const differingFast = fastOnline.filter((r) => {
+    const p = r.extracted.pavan22k || Math.round(r.extracted.gram22k * 8);
+    if (p === kgCurrentPavan) return false;
+    // Never regress to yesterday's rate when KeralaGold already posted today's rate
+    if (!kgIsBehindToday && kgPrevEntry && p === kgPrevEntry.pavan) return false;
+    return true;
+  });
+
+  let consensusWinner: {probe: SourceProbeResult; extracted: SecondaryExtraction} | null = null;
+  if (differingFast.length >= 2) {
+    const byPavan = new Map<number, typeof differingFast>();
+    for (const item of differingFast) {
+      const p = item.extracted.pavan22k || Math.round(item.extracted.gram22k * 8);
+      const list = byPavan.get(p) || [];
+      list.push(item);
+      byPavan.set(p, list);
+    }
+    let bestGroup: typeof differingFast = [];
+    for (const [, group] of byPavan.entries()) {
+      if (group.length > bestGroup.length) {
+        bestGroup = group;
+      }
+    }
+    // Promote only when fast secondary consensus strictly beats KeralaGold's vote count (or KeralaGold is behind today)
+    if (bestGroup.length >= 2 && (kgIsBehindToday || bestGroup.length > votesForKg)) {
+      consensusWinner = bestGroup[0];
+    }
+  }
+
+  // Also promote LiveGoldKerala directly if KeralaGold hasn't posted today's date AND LiveGoldKerala history shows today's date
+  if (!consensusWinner && kgIsBehindToday) {
+    const lgk = fastOnline.find((r) => r.probe.id === 'livegoldkerala');
+    const lgkLatest = lgk?.extracted?.historyEntries?.[lgk.extracted.historyEntries.length - 1];
+    if (lgk && lgkLatest && (lgkLatest.isToday || lgkLatest.isoDate >= todayIst.isoDate)) {
+      consensusWinner = lgk;
+    }
+  }
+
+  if (consensusWinner) {
+    const promoted = mergeNewerRateOntoPrimary(
+      kg.data,
+      {
+        id: consensusWinner.probe.id as SecondarySourceId,
+        probe: consensusWinner.probe,
+        extracted: consensusWinner.extracted,
+      },
+      chain,
+      !kgIsBehindToday,
+    );
+    latestCache.set(cacheKey, {data: promoted, cachedAt: Date.now()});
+    return promoted;
   }
 
   const result: LatestGoldResponse = {
@@ -1100,13 +1302,13 @@ export async function getLatestGoldWithFallback(
 let probesCache: {data: SourceProbeResult[]; cachedAt: number} | null = null;
 const PROBES_CACHE_TTL_MS = 120_000;
 
-export async function getAllSourceProbes(): Promise<SourceProbeResult[]> {
-  if (probesCache && Date.now() - probesCache.cachedAt < PROBES_CACHE_TTL_MS) {
+export async function getAllSourceProbes(forceRefresh = false): Promise<SourceProbeResult[]> {
+  if (!forceRefresh && probesCache && Date.now() - probesCache.cachedAt < PROBES_CACHE_TTL_MS) {
     return probesCache.data;
   }
   const [kg, ...secondaries] = await Promise.all([
-    probeKeralaGold(),
-    ...SECONDARY_ORDER.map((id) => probeSecondarySource(id)),
+    probeKeralaGold(forceRefresh),
+    ...SECONDARY_ORDER.map((id) => probeSecondarySource(id, forceRefresh)),
   ]);
   const results = [kg.probe, ...secondaries.map((s) => s.probe)];
   probesCache = {data: results, cachedAt: Date.now()};

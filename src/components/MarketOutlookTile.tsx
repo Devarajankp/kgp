@@ -73,7 +73,7 @@ export const MarketOutlookTile: React.FC<MarketOutlookTileProps> = ({
           </div>
           <div className="min-w-0">
             <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-              {lang === 'ml' ? 'തത്സമയ ആഗോള സ്പോട്ട് & വാങ്ങൽ സൂചന' : 'Live Global Spot & Buy-vs-Wait Outlook'}
+              {lang === 'ml' ? 'ആഗോള സ്പോട്ട് & വാങ്ങൽ സൂചന' : 'Global Spot & Buy-vs-Wait Outlook'}
             </div>
             <h2 className="font-display text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-snug">
               {headline}

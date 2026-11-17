@@ -249,7 +249,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                   setRateCustomized(true);
                   setCustomRatePerGram(Math.max(0, Number(e.target.value) || 0));
                 }}
-                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
               <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 tabular-nums truncate">
                 1P = {formatInr(customRatePerGram * 8)}
@@ -270,7 +270,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="0.25"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
               <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 tabular-nums truncate">
                 {totalGrams.toFixed(1)}g · {totalPavan.toFixed(2)}P
@@ -359,7 +359,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                         }
                       }}
                       onBlur={() => setMakingPercentInput(String(makingPercent))}
-                      className="w-14 bg-transparent text-right font-mono-nums text-xs sm:text-sm font-bold text-slate-900 focus:outline-none dark:text-white"
+                      className="w-16 bg-transparent text-right font-mono-nums text-base sm:text-sm font-bold text-slate-900 focus:outline-none dark:text-white"
                     />
                     <span className="font-semibold text-amber-700 dark:text-amber-400">%</span>
                   </div>
@@ -408,7 +408,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="50"
                 value={makingPerGram}
                 onChange={(e) => setMakingPerGram(Math.max(0, Number(e.target.value) || 0))}
-                className="mt-2.5 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-3 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-2.5 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-3 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
             )}
 
@@ -420,7 +420,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="100"
                 value={makingFlat}
                 onChange={(e) => setMakingFlat(Math.max(0, Number(e.target.value) || 0))}
-                className="mt-2.5 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-3 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-2.5 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-3 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
             )}
           </div>
@@ -442,7 +442,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="0.5"
                 value={gstPercent}
                 onChange={(e) => setGstPercent(Math.max(0, Number(e.target.value) || 0))}
-                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
             </div>
 
@@ -460,7 +460,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="100"
                 value={stoneCharge}
                 onChange={(e) => setStoneCharge(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
             </div>
 
@@ -478,7 +478,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="500"
                 value={oldGoldDeduction}
                 onChange={(e) => setOldGoldDeduction(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
             </div>
           </div>
@@ -581,7 +581,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({lang, latestData}) 
                 step="5000"
                 value={reverseBudget}
                 onChange={(e) => setReverseBudget(e.target.value)}
-                className="w-36 min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-xs sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
+                className="w-36 min-h-[38px] rounded-xl border border-slate-900/12 bg-white/80 px-2.5 py-1.5 font-mono-nums text-base sm:text-sm font-semibold text-slate-900 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"
               />
               <div className="flex-1 text-right tabular-nums">
                 <div className="font-gold-numeral text-sm sm:text-base font-bold text-slate-900 dark:text-white">
