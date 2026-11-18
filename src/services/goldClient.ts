@@ -113,6 +113,14 @@ async function fetchStaticLatestJson(): Promise<LatestGoldResponse | null> {
   return null;
 }
 
+function getCurrentIstYearMonth(): {year: number; monthName: string} {
+  const nowIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return {
+    year: nowIst.getUTCFullYear(),
+    monthName: nowIst.toLocaleString('en-US', {month: 'long', timeZone: 'UTC'}).toLowerCase(),
+  };
+}
+
 export async function fetchLatestGold(options?: {
   source?: PreferredSource;
   probe?: boolean;
@@ -131,27 +139,29 @@ export async function fetchLatestGold(options?: {
   }
 
   // 1. Try Live Node API Server (current origin OR configured VITE_API_BASE_URL / custom URL)
-  try {
-    const params = new URLSearchParams({
-      source,
-      probe: String(probe),
-    });
-    if (forceRefresh) {
-      params.set('refresh', 'true');
-      params.set('_ts', String(Date.now()));
+  if (!isStaticPagesEnvironment()) {
+    try {
+      const params = new URLSearchParams({
+        source,
+        probe: String(probe),
+      });
+      if (forceRefresh) {
+        params.set('refresh', 'true');
+        params.set('_ts', String(Date.now()));
+      }
+      const res = await fetch(resolveApiUrl(`api/gold/latest?${params.toString()}`), {
+        cache: 'no-store',
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = (await res.json()) as LatestGoldResponse;
+        await saveLatestCache(data);
+        await maybeAutoPrune();
+        return {data, fromCache: false, dataMode: 'live-api'};
+      }
+    } catch {
+      // Live backend unavailable (offline or static host)
     }
-    const res = await fetch(resolveApiUrl(`api/gold/latest?${params.toString()}`), {
-      cache: 'no-store',
-    });
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      const data = (await res.json()) as LatestGoldResponse;
-      await saveLatestCache(data);
-      await maybeAutoPrune();
-      return {data, fromCache: false, dataMode: 'live-api'};
-    }
-  } catch {
-    // Live backend unavailable (offline or static GitHub Pages host)
   }
 
   // 2. On Static GitHub Pages or Offline: check deployed static JSON & IndexedDB cache, keeping whichever is NEWER!
@@ -176,57 +186,105 @@ export async function fetchLatestGold(options?: {
   throw new Error('Unable to load gold rates from network or device cache.');
 }
 
+async function fetchStaticHistoryJson(params: {
+  mode: 'daily' | 'monthly' | 'yearly';
+  year: number;
+  month: string;
+  forceRefresh?: boolean;
+  isActivePeriod?: boolean;
+}): Promise<HistoryResponse | null> {
+  const relPath =
+    params.mode === 'yearly'
+      ? 'api/history/yearly.json'
+      : params.mode === 'monthly'
+        ? `api/history/monthly-${params.year}.json`
+        : `api/history/${params.year}-${params.month}.json`;
+
+  const bust = params.forceRefresh || params.isActivePeriod ? `?_ts=${Date.now()}` : '';
+  const url = `${import.meta.env.BASE_URL}${relPath}${bust}`;
+
+  try {
+    const res = await fetch(url, {
+      cache: params.forceRefresh || params.isActivePeriod ? 'no-store' : 'default',
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      return (await res.json()) as HistoryResponse;
+    }
+  } catch {
+    // Offline or archive not present in static bundle
+  }
+  return null;
+}
+
 export async function fetchGoldHistory(params: {
   mode: 'daily' | 'monthly' | 'yearly';
   year?: number;
   month?: string;
   forceRefresh?: boolean;
 }): Promise<{data: HistoryResponse; fromCache: boolean}> {
+  const ist = getCurrentIstYearMonth();
+  const targetYear = params.year || ist.year;
+  const targetMonth = (params.month || ist.monthName).toLowerCase();
+
+  const isActivePeriod =
+    params.mode === 'yearly' ||
+    (params.mode === 'monthly' && targetYear === ist.year) ||
+    (params.mode === 'daily' && targetYear === ist.year && targetMonth === ist.monthName);
+
   const key =
     params.mode === 'yearly'
       ? 'yearly:all'
       : params.mode === 'monthly'
-        ? `monthly:${params.year || 2026}`
-        : `daily:${params.year || 2026}:${(params.month || 'november').toLowerCase()}`;
+        ? `monthly:${targetYear}`
+        : `daily:${targetYear}:${targetMonth}`;
 
   if (!params.forceRefresh) {
     const cached = await readHistoryCache(key);
     if (cached) {
-      const nowIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-      const currentIstYear = nowIst.getUTCFullYear();
-      const currentIstMonthName = nowIst
-        .toLocaleString('en-US', {month: 'long', timeZone: 'UTC'})
-        .toLowerCase();
-      const isCurrentYearMonth =
-        params.mode === 'daily' &&
-        params.year === currentIstYear &&
-        params.month?.toLowerCase() === currentIstMonthName;
-      const maxStaleMs = isCurrentYearMonth ? 15 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+      const maxStaleMs = isActivePeriod ? 10 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
       if (Date.now() - cached.cachedAt < maxStaleMs) {
         return {data: cached.data, fromCache: true};
       }
     }
   }
 
-  try {
-    const qs = new URLSearchParams({mode: params.mode});
-    if (params.year) qs.set('year', String(params.year));
-    if (params.month) qs.set('month', params.month.toLowerCase());
-    if (params.forceRefresh) qs.set('_ts', String(Date.now()));
+  // 1. Try Live Node API Server when not running strictly as static GitHub Pages
+  if (!isStaticPagesEnvironment()) {
+    try {
+      const qs = new URLSearchParams({mode: params.mode});
+      if (targetYear) qs.set('year', String(targetYear));
+      if (targetMonth) qs.set('month', targetMonth);
+      if (params.forceRefresh) qs.set('_ts', String(Date.now()));
 
-    const res = await fetch(resolveApiUrl(`api/gold/history?${qs.toString()}`), {
-      cache: params.forceRefresh ? 'no-store' : 'default',
-    });
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      const data = (await res.json()) as HistoryResponse;
-      await saveHistoryCache(key, data);
-      return {data, fromCache: false};
+      const res = await fetch(resolveApiUrl(`api/gold/history?${qs.toString()}`), {
+        cache: params.forceRefresh || isActivePeriod ? 'no-store' : 'default',
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = (await res.json()) as HistoryResponse;
+        await saveHistoryCache(key, data);
+        return {data, fromCache: false};
+      }
+    } catch {
+      // Fall back to static history JSON / cache
     }
-  } catch {
-    // Fall back to cache or snapshot
   }
 
+  // 2. Try deployed static History archive JSON (`public/api/history/*.json`)
+  const staticHistory = await fetchStaticHistoryJson({
+    mode: params.mode,
+    year: targetYear,
+    month: targetMonth,
+    forceRefresh: params.forceRefresh,
+    isActivePeriod,
+  });
+  if (staticHistory) {
+    await saveHistoryCache(key, staticHistory);
+    return {data: staticHistory, fromCache: false};
+  }
+
+  // 3. Fallback to bundled snapshot ONLY if the year/month matches exactly!
   const snapshot = await loadBundledSnapshot(params.forceRefresh);
   const staleCache = await readHistoryCache(key);
 
@@ -235,11 +293,16 @@ export async function fetchGoldHistory(params: {
       await saveHistoryCache(key, snapshot.yearly);
       return {data: snapshot.yearly, fromCache: true};
     }
-    if (params.mode === 'monthly' && snapshot.monthly) {
+    if (params.mode === 'monthly' && snapshot.monthly && snapshot.latest?.year === targetYear) {
       await saveHistoryCache(key, snapshot.monthly);
       return {data: snapshot.monthly, fromCache: true};
     }
-    if (params.mode === 'daily' && snapshot.latest) {
+    if (
+      params.mode === 'daily' &&
+      snapshot.latest &&
+      snapshot.latest.year === targetYear &&
+      snapshot.latest.monthKey.toLowerCase() === targetMonth
+    ) {
       const fallbackDaily: HistoryResponse = {
         mode: 'daily',
         title: `Daily Gold Prices — ${snapshot.latest.monthLabel}`,
@@ -274,6 +337,13 @@ export async function fetchGoldHistory(params: {
     return {data: staleCache.data, fromCache: true};
   }
 
+  const prettyMonth = targetMonth.charAt(0).toUpperCase() + targetMonth.slice(1);
+  if (params.mode === 'daily') {
+    throw new Error(`Daily archive for ${prettyMonth} ${targetYear} is not available.`);
+  }
+  if (params.mode === 'monthly') {
+    throw new Error(`Monthly archive for ${targetYear} is not available.`);
+  }
   throw new Error('Selected history archive is not cached offline and could not be reached.');
 }
 

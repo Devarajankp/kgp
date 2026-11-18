@@ -10,8 +10,8 @@
       "url": "https://www.keralagold.com/daily-gold-prices.htm",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 933,
-      "detail": "Active · 21 records in November 2026",
+      "latencyMs": 777,
+      "detail": "Active · 22 records in November 2026",
       "supportsHistory": true
     },
     {
@@ -20,8 +20,8 @@
       "url": "https://www.livegoldkerala.com/",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 1061,
-      "detail": "22K ₹12,470/g · Pavan ₹99,760",
+      "latencyMs": 417,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": true
     },
     {
@@ -30,8 +30,8 @@
       "url": "https://www.goodreturns.in/gold-rates/kerala.html",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 757,
-      "detail": "22K ₹12,470/g · Pavan ₹99,760",
+      "latencyMs": 835,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": false
     },
     {
@@ -40,8 +40,8 @@
       "url": "https://groww.in/gold-rates/gold-rate-today-in-kerala",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 957,
-      "detail": "22K ₹12,470/g · Pavan ₹99,760",
+      "latencyMs": 581,
+      "detail": "22K ₹12,216/g · Pavan ₹97,728",
       "supportsHistory": false
     },
     {
@@ -50,8 +50,8 @@
       "url": "https://www.bankbazaar.com/gold-rate-kerala.html",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 154,
-      "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
+      "latencyMs": 132,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": false
     },
     {
@@ -60,8 +60,8 @@
       "url": "https://www.josalukkasonline.com/gold-rate-today/kerala",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 697,
-      "detail": "22K ₹12,470/g · Pavan ₹99,760",
+      "latencyMs": 787,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": false
     },
     {
@@ -70,8 +70,8 @@
       "url": "https://store.kalyanjewellers.net/gold-rate/kerala/en",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 1154,
-      "detail": "22K ₹12,540/g · Pavan ₹1,00,320",
+      "latencyMs": 1057,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": false
     },
     {
@@ -80,29 +80,29 @@
       "url": "https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-kerala",
       "status": "online",
       "httpStatus": 200,
-      "latencyMs": 391,
-      "detail": "22K ₹12,539/g · Pavan ₹1,00,312",
+      "latencyMs": 1161,
+      "detail": "22K ₹12,215/g · Pavan ₹97,720",
       "supportsHistory": false
     }
   ],
-  "fetchedAt": "2026-11-17T05:43:30.725Z",
-  "serverLastModified": "Tue, 17 Nov 2026 03:56:10 GMT",
-  "updatedTimeIst": "17 Nov 2026, 09:26 am IST",
+  "fetchedAt": "2026-11-18T07:04:52.832Z",
+  "serverLastModified": "Wed, 18 Nov 2026 04:21:26 GMT",
+  "updatedTimeIst": "18 Nov 2026, 09:51 am IST",
   "scheduleLabel": "Morning Update",
   "monthLabel": "November 2026",
   "year": 2026,
   "monthKey": "november",
   "current": {
-    "dateLabel": "17-Nov-26",
+    "dateLabel": "18-Nov-26",
     "session": "Today",
-    "gram22k": 12470,
-    "pavan22k": 99760,
-    "gram24kEstimate": 13604,
-    "pavan24kEstimate": 108832,
-    "gram18kEstimate": 10203,
-    "changePavan": -560,
-    "changeGram": -70,
-    "changePercent": -0.56,
+    "gram22k": 12215,
+    "pavan22k": 97720,
+    "gram24kEstimate": 13325,
+    "pavan24kEstimate": 106600,
+    "gram18kEstimate": 9994,
+    "changePavan": -2040,
+    "changeGram": -255,
+    "changePercent": -2.04,
     "direction": "down",
     "trendLabel": "Downward"
   },
@@ -112,9 +112,9 @@
     "dateLabel": "5th and 6th November 2026 (Morning)"
   },
   "monthlyLow": {
-    "pavan": 99760,
-    "gram": 12470,
-    "dateLabel": "17th November 2026"
+    "pavan": 97720,
+    "gram": 12215,
+    "dateLabel": "18th November 2026"
   },
   "entries": [
     {
@@ -386,12 +386,12 @@
       "direction": "flat"
     },
     {
-      "id": "2026-11-16-yesterday-19",
+      "id": "2026-11-16-daily-19",
       "dateLabel": "16-Nov-26",
       "isoDate": "2026-11-16",
-      "session": "Yesterday",
+      "session": "Daily",
       "isToday": false,
-      "isYesterday": true,
+      "isYesterday": false,
       "pavan": 100320,
       "gram": 12540,
       "changePavan": -600,
@@ -400,17 +400,31 @@
       "direction": "down"
     },
     {
-      "id": "2026-11-17-today-20",
+      "id": "2026-11-17-yesterday-20",
       "dateLabel": "17-Nov-26",
       "isoDate": "2026-11-17",
-      "session": "Today",
-      "isToday": true,
-      "isYesterday": false,
+      "session": "Yesterday",
+      "isToday": false,
+      "isYesterday": true,
       "pavan": 99760,
       "gram": 12470,
       "changePavan": -560,
       "changeGram": -70,
       "changePercent": -0.56,
+      "direction": "down"
+    },
+    {
+      "id": "2026-11-18-today-21",
+      "dateLabel": "18-Nov-26",
+      "isoDate": "2026-11-18",
+      "session": "Today",
+      "isToday": true,
+      "isYesterday": false,
+      "pavan": 97720,
+      "gram": 12215,
+      "changePavan": -2040,
+      "changeGram": -255,
+      "changePercent": -2.04,
       "direction": "down",
       "note": "Lowest of Month"
     }

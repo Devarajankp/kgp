@@ -1366,13 +1366,8 @@ export async function getGoldHistory(params: {
     const primaryUrl = 'https://www.keralagold.com/monthly-gold-prices.htm';
     const archiveUrl = `https://www.keralagold.com/monthly-gold-prices-${targetYear}.htm`;
 
-    let res = await fetchTextWithTimeout(targetYear >= currentYear ? primaryUrl : archiveUrl, 8000);
-    let usedUrl = targetYear >= currentYear ? primaryUrl : archiveUrl;
-
-    if (!res.ok && targetYear < currentYear) {
-      res = await fetchTextWithTimeout(primaryUrl, 8000);
-      usedUrl = primaryUrl;
-    }
+    const usedUrl = targetYear >= currentYear ? primaryUrl : archiveUrl;
+    const res = await fetchTextWithTimeout(usedUrl, 8000);
 
     if (!res.ok) throw new Error(`Monthly archive for ${targetYear} unavailable (HTTP ${res.status})`);
     const parsed = parseMonthlyHtml(res.text);
@@ -1393,6 +1388,7 @@ export async function getGoldHistory(params: {
   }
 
   // Daily archive for a given month + year
+  const prettyMonth = targetMonth.charAt(0).toUpperCase() + targetMonth.slice(1);
   const archiveUrl = `https://www.keralagold.com/daily-gold-prices-${targetMonth}-${targetYear}.htm`;
 
   try {
@@ -1412,57 +1408,79 @@ export async function getGoldHistory(params: {
 
     if (res.ok) {
       const parsed = parseDailyHtml(res.text);
-      const prettyMonth = targetMonth.charAt(0).toUpperCase() + targetMonth.slice(1);
-      const out: HistoryResponse = {
-        mode: 'daily',
-        title: `Daily Gold Prices — ${prettyMonth} ${targetYear}`,
-        subtitle: `${parsed.entries.length} recorded updates including morning/evening revisions`,
-        sourceName: 'KeralaGold.com',
-        sourceUrl: usedUrl,
-        fetchedAt: new Date().toISOString(),
-        serverLastModified: res.lastModified,
-        high: parsed.monthlyHigh
-          ? {pavan: parsed.monthlyHigh.pavan, gram: parsed.monthlyHigh.gram, label: parsed.monthlyHigh.dateLabel}
-          : null,
-        low: parsed.monthlyLow
-          ? {pavan: parsed.monthlyLow.pavan, gram: parsed.monthlyLow.gram, label: parsed.monthlyLow.dateLabel}
-          : null,
-        dailyEntries: parsed.entries,
-      };
-      historyServerCache.set(hKey, {data: out, cachedAt: Date.now()});
-      return out;
+      if (parsed.entries.length > 0) {
+        const out: HistoryResponse = {
+          mode: 'daily',
+          title: `Daily Gold Prices — ${prettyMonth} ${targetYear}`,
+          subtitle: `${parsed.entries.length} recorded updates including morning/evening revisions`,
+          sourceName: 'KeralaGold.com',
+          sourceUrl: usedUrl,
+          fetchedAt: new Date().toISOString(),
+          serverLastModified: res.lastModified,
+          high: parsed.monthlyHigh
+            ? {pavan: parsed.monthlyHigh.pavan, gram: parsed.monthlyHigh.gram, label: parsed.monthlyHigh.dateLabel}
+            : null,
+          low: parsed.monthlyLow
+            ? {pavan: parsed.monthlyLow.pavan, gram: parsed.monthlyLow.gram, label: parsed.monthlyLow.dateLabel}
+            : null,
+          dailyEntries: parsed.entries,
+        };
+        historyServerCache.set(hKey, {data: out, cachedAt: Date.now()});
+        return out;
+      }
     }
   } catch {
-    // Fall through to LiveGoldKerala daily archive fallback if current month/year
+    // Fall through to LiveGoldKerala filter check below
   }
 
-  // Fallback to LiveGoldKerala daily archive for recent daily prices
-  const lgkUrl = 'https://www.livegoldkerala.com/gold-rate-history';
-  const lgkRes = await fetchTextWithTimeout(lgkUrl, 8000);
-  if (lgkRes.ok) {
-    const entries = parseLiveGoldKeralaHistoryHtml(lgkRes.text);
-    if (entries.length > 0) {
-      const maxE = entries.reduce((a, b) => (b.pavan > a.pavan ? b : a));
-      const minE = entries.reduce((a, b) => (b.pavan < a.pavan ? b : a));
-      const out: HistoryResponse = {
-        mode: 'daily',
-        title: `Daily Gold Prices — Recent Archive`,
-        subtitle: `${entries.length} daily records via LiveGoldKerala.com fallback`,
-        sourceName: 'LiveGoldKerala.com',
-        sourceUrl: lgkUrl,
-        fetchedAt: new Date().toISOString(),
-        serverLastModified: lgkRes.lastModified,
-        high: {pavan: maxE.pavan, gram: maxE.gram, label: maxE.dateLabel},
-        low: {pavan: minE.pavan, gram: minE.gram, label: minE.dateLabel},
-        dailyEntries: entries,
-      };
-      historyServerCache.set(hKey, {data: out, cachedAt: Date.now()});
-      return out;
+  // Only fall back to LiveGoldKerala when matching entries for the requested year/month actually exist
+  const monthIdx = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ].indexOf(targetMonth);
+  const isoPrefix =
+    monthIdx >= 0 ? `${targetYear}-${String(monthIdx + 1).padStart(2, '0')}-` : '';
+
+  if (isoPrefix) {
+    const lgkUrl = 'https://www.livegoldkerala.com/gold-rate-history';
+    const lgkRes = await fetchTextWithTimeout(lgkUrl, 8000);
+    if (lgkRes.ok) {
+      const matchingEntries = parseLiveGoldKeralaHistoryHtml(lgkRes.text).filter((e) =>
+        e.isoDate.startsWith(isoPrefix),
+      );
+      if (matchingEntries.length > 0) {
+        const maxE = matchingEntries.reduce((a, b) => (b.pavan > a.pavan ? b : a));
+        const minE = matchingEntries.reduce((a, b) => (b.pavan < a.pavan ? b : a));
+        const out: HistoryResponse = {
+          mode: 'daily',
+          title: `Daily Gold Prices — ${prettyMonth} ${targetYear}`,
+          subtitle: `${matchingEntries.length} daily records via LiveGoldKerala.com fallback`,
+          sourceName: 'LiveGoldKerala.com',
+          sourceUrl: lgkUrl,
+          fetchedAt: new Date().toISOString(),
+          serverLastModified: lgkRes.lastModified,
+          high: {pavan: maxE.pavan, gram: maxE.gram, label: maxE.dateLabel},
+          low: {pavan: minE.pavan, gram: minE.gram, label: minE.dateLabel},
+          dailyEntries: matchingEntries,
+        };
+        historyServerCache.set(hKey, {data: out, cachedAt: Date.now()});
+        return out;
+      }
     }
   }
 
   if (cachedH) return cachedH.data;
-  throw new Error(`Archive for ${targetMonth} ${targetYear} is not currently available.`);
+  throw new Error(`Archive for ${prettyMonth} ${targetYear} is not available.`);
 }
 
 let spotMarketCache: {data: LiveSpotMarketData; cachedAt: number} | null = null;

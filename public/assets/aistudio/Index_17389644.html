@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <base target="_top">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-main: #ffffff;
+      --text-muted: #94a3b8;
+      --gold-primary: #fbbf24;
+      --cyan-accent: #38bdf8;
+      --green-trend: #4ade80;
+      --red-trend: #f87171;
+    }
+
+    [data-theme="light"] {
+      --bg-color: #f1f5f9;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --gold-primary: #d97706;
+      --cyan-accent: #0284c7;
+      --green-trend: #16a34a;
+      --red-trend: #dc2626;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: background-color 0.4s ease;
+    }
+
+    .container { width: 100%; max-width: 600px; }
+
+    /* Header & Animated Buttons */
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    h1 { margin: 0; font-size: 1.4rem; color: var(--gold-primary); font-weight: 700; }
+
+    .btn-group { display: flex; gap: 10px; }
+    .btn-action {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-action:active { transform: scale(0.9); }
+
+    @keyframes spinBtn { 100% { transform: rotate(360deg); } }
+    .syncing .icon { animation: spinBtn 1s linear infinite; color: var(--gold-primary); }
+
+    /* Data Sections */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .section-pavan { border-top: 4px solid var(--gold-primary); }
+    .section-gram { border-top: 4px solid var(--cyan-accent); }
+
+    .card-header { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .date-badge { background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 6px; }
+    [data-theme="light"] .date-badge { background: #f1f5f9; }
+
+    .main-price-row { display: flex; align-items: baseline; gap: 15px; margin-bottom: 10px;}
+    .price-value { font-size: 1.8rem; font-weight: bold; color: var(--text-main); }
+    .trend { font-size: 1rem; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
+
+    /* Intraday Sub-entries */
+    .sub-entries {
+      border-top: 1px dashed var(--card-border);
+      padding-top: 10px;
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sub-row { display: flex; justify-content: space-between; color: var(--text-muted); }
+    .sub-row strong { color: var(--text-main); }
+
+    /* Chart & Table */
+    .chart-container { height: 260px; width: 100%; }
+    .table-wrapper { max-height: 450px; overflow-y: auto; border-radius: 8px; border: 1px solid var(--card-border); }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid var(--card-border); }
+    th { background: var(--bg-color); color: var(--text-muted); position: sticky; top: 0; font-weight: 600; }
+    
+    .trend-up { color: var(--green-trend); background: rgba(74, 222, 128, 0.1); }
+    .trend-down { color: var(--red-trend); background: rgba(248, 113, 113, 0.1); }
+    .trend-neutral { color: var(--text-muted); }
+
+    .loading-text { text-align: center; color: var(--gold-primary); margin-top: 50px; }
+  </style>
+</head>
+<body>
+
+  <div class="container" id="app" style="display: none;">
+    <div class="header-bar">
+      <h1>Gold Pro</h1>
+      <div class="btn-group">
+        <button class="btn-action" onclick="toggleTheme()"><span>🌗</span> Theme</button>
+        <button class="btn-action" id="syncBtn" onclick="loadData()"><span class="icon">🔄</span> Sync</button>
+      </div>
+    </div>
+
+    <div class="card section-pavan">
+      <div class="card-header">
+        <span>1 Pavan (8g)</span>
+        <span class="date-badge" id="pav-date">--</span>
+      </div>
+      <div class="main-price-row">
+        <div class="price-value" id="pav-val">--</div>
+        <div class="trend" id="pav-trend">--</div>
+      </div>
+      <div class="sub-entries" id="pav-multi" style="display: none;"></div>
+    </div>
+
+    <div class="card section-gram">
+      <div class="card-header">
+        <span>1 Gram</span>
+        <span class="date-badge" id="gram-date">--</span>
+      </div>
+      <div class="main-price-row">
+        <div class="price-value" id="gram-val">--</div>
+        <div class="trend" id="gram-trend">--</div>
+      </div>
+      <div class="sub-entries" id="gram-multi" style="display: none;"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-container"><canvas id="marketChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0; font-size:1rem;">Detailed History</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Date</th><th>Pavan</th><th>Gram</th><th>Change (P)</th></tr></thead>
+          <tbody id="history-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <div class="loading-text" id="loader">Syncing secure data...</div>
+
+  <script>
+    let chartInst = null;
+    function toggleTheme() {
+      const html = document.documentElement;
+      html.setAttribute('data-theme', html.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+    }
+
+    function getTrendClass(str) {
+      if (str.includes('+')) return 'trend-up';
+      if (str.includes('-')) return 'trend-down';
+      return 'trend-neutral';
+    }
+
+    function loadData() {
+      document.getElementById('syncBtn')?.classList.add('syncing');
+      google.script.run.withSuccessHandler(renderUI).withFailureHandler(()=>alert("Error")).getGoldData();
+    }
+
+    function cleanNum(s) { return parseInt(s.replace(/[^0-9]/g, ''), 10); }
+
+    function renderUI(data) {
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      document.getElementById('syncBtn').classList.remove('syncing');
+
+      // Set Pavan Section
+      document.getElementById('pav-date').innerText = data.latestDate;
+      document.getElementById('pav-val').innerText = data.latestPavan;
+      const pt = document.getElementById('pav-trend');
+      pt.innerText = data.pChange;
+      pt.className = 'trend ' + getTrendClass(data.pChange);
+
+      // Set Gram Section
+      document.getElementById('gram-date').innerText = data.latestDate;
+      document.getElementById('gram-val').innerText = data.latestGram;
+      const gt = document.getElementById('gram-trend');
+      gt.innerText = data.gChange;
+      gt.className = 'trend ' + getTrendClass(data.gChange);
+
+      // Handle Multiple Intraday Entries
+      const pavMulti = document.getElementById('pav-multi');
+      const gramMulti = document.getElementById('gram-multi');
+      
+      if (data.todayCombined.length > 1) {
+        let pHTML = '', gHTML = '';
+        data.todayCombined.forEach(r => {
+          pHTML += `<div class="sub-row"><span>${r.date}</span><strong>${r.pavan}</strong></div>`;
+          gHTML += `<div class="sub-row"><span>${r.date}</span><strong>${r.gram}</strong></div>`;
+        });
+        pavMulti.innerHTML = pHTML; pavMulti.style.display = 'flex';
+        gramMulti.innerHTML = gHTML; gramMulti.style.display = 'flex';
+      } else {
+        pavMulti.style.display = 'none'; gramMulti.style.display = 'none';
+      }
+
+      // History Table & Chart Arrays
+      let tBody = '';
+      let labels = [], cPavan = [], cGram = [];
+
+      data.combinedHistory.forEach(row => {
+        // Build table row
+        tBody += `<tr>
+          <td>${row.date}</td>
+          <td>${row.pavan}</td>
+          <td>${row.gram}</td>
+          <td class="${getTrendClass(row.trendPavan)} font-weight-bold" style="padding:4px; border-radius:4px; text-align:center;">${row.trendPavan}</td>
+        </tr>`;
+        
+        // Build chart (un-reverse for time series)
+        labels.unshift(row.date);
+        cPavan.unshift(cleanNum(row.pavan));
+        cGram.unshift(cleanNum(row.gram));
+      });
+      document.getElementById('history-table').innerHTML = tBody;
+
+      renderChart(labels, cPavan, cGram);
+    }
+
+    function renderChart(labels, pData, gData) {
+      const ctx = document.getElementById('marketChart').getContext('2d');
+      if (chartInst) chartInst.destroy();
+      
+      const st = getComputedStyle(document.documentElement);
+      const gold = st.getPropertyValue('--gold-primary').trim();
+      const cyan = st.getPropertyValue('--cyan-accent').trim();
+
+      chartInst = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Pavan', data: pData,
+              borderColor: gold, backgroundColor: gold,
+              borderWidth: 2, tension: 0.3,
+              pointRadius: 4, pointHoverRadius: 7, yAxisID: 'y'
+            },
+            {
+              label: 'Gram', data: gData,
+              borderColor: cyan, backgroundColor: cyan,
+              borderWidth: 2, tension: 0.3,
+              pointRadius: 4, pointHoverRadius: 7, yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', maxTicksLimit: 5 }, grid: {display: false} },
+            y: { position: 'left', ticks: { color: gold }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y1: { position: 'right', ticks: { color: cyan }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>

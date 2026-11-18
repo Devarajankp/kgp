@@ -74,13 +74,28 @@ export default defineConfig(() => {
               handler: 'NetworkOnly',
             },
             {
-              urlPattern: /\/(api\/.*\.json|data\/kerala-gold-snapshot\.json)/i,
+              urlPattern: /\/api\/history\/.*\.json/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'kgp-history-static-cache',
+                networkTimeoutSeconds: 4,
+                expiration: {
+                  maxEntries: 250,
+                  maxAgeSeconds: 60 * 60 * 24 * 14,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /\/(api\/(?!history\/).*\.json|data\/kerala-gold-snapshot\.json)/i,
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'kgp-static-snapshot-cache',
                 networkTimeoutSeconds: 4,
                 expiration: {
-                  maxEntries: 12,
+                  maxEntries: 16,
                   maxAgeSeconds: 60 * 60 * 24 * 7,
                 },
                 cacheableResponse: {

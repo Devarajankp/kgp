@@ -26,14 +26,23 @@ const MONTHS = [
   'december',
 ] as const;
 
-const MAX_YEAR = Math.max(2026, new Date().getFullYear());
+function getCurrentIstDateParts(): {year: number; month: string} {
+  const nowIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return {
+    year: Math.max(2026, nowIst.getUTCFullYear()),
+    month: nowIst.toLocaleString('en-US', {month: 'long', timeZone: 'UTC'}).toLowerCase(),
+  };
+}
+
+const INITIAL_IST = getCurrentIstDateParts();
+const MAX_YEAR = INITIAL_IST.year;
 const YEARS = Array.from({length: MAX_YEAR - 2009 + 1}, (_, i) => MAX_YEAR - i);
 const MONTHLY_YEARS = Array.from({length: MAX_YEAR - 2020 + 1}, (_, i) => MAX_YEAR - i);
 
 export const HistoryTab: React.FC<HistoryTabProps> = ({lang}) => {
   const [mode, setMode] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [selectedYear, setSelectedYear] = useState<number>(MAX_YEAR);
-  const [selectedMonth, setSelectedMonth] = useState<string>('october');
+  const [selectedYear, setSelectedYear] = useState<number>(INITIAL_IST.year);
+  const [selectedMonth, setSelectedMonth] = useState<string>(INITIAL_IST.month);
   const [yearlySpan, setYearlySpan] = useState<'all' | '25' | '10'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [chartUnit, setChartUnit] = useState<'pavan' | 'gram'>('pavan');
