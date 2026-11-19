@@ -16,15 +16,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: [
-          'favicon.ico',
-          'apple-touch-icon.png',
-          'icon.svg',
-          'pwa-192x192.png',
-          'pwa-512x512.png',
-          'pwa-maskable-512x512.png',
-          'sw-push.js',
-        ],
+        includeAssets: [],
         manifest: {
           id: basePath,
           name: 'Kerala Gold Price (KGP)',
@@ -60,6 +52,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          inlineWorkboxRuntime: true,
           importScripts: ['sw-push.js'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,

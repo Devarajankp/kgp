@@ -35,15 +35,23 @@ const AUTO_SYNC_INTERVAL_MS = 60_000; // 60s real-time live sync window on Verce
 
 function getInitialTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light';
-  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (saved === 'dark' || saved === 'light') return saved;
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'dark' || saved === 'light') return saved;
+  } catch {
+    // Ignore restricted storage
+  }
   return 'light';
 }
 
 function getInitialLang(): AppLanguage {
   if (typeof window === 'undefined') return 'en';
-  const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
-  if (saved === 'ml' || saved === 'en') return saved;
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === 'ml' || saved === 'en') return saved;
+  } catch {
+    // Ignore restricted storage
+  }
   return 'en';
 }
 
@@ -81,7 +89,11 @@ export default function App() {
     } else {
       root.classList.remove('dark');
     }
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore restricted storage
+    }
 
     const color = theme === 'dark' ? '#0B0D12' : '#F6F4EF';
     const lightMeta = document.getElementById('theme-color-light');
@@ -92,7 +104,11 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    try {
+      window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch {
+      // Ignore restricted storage
+    }
   }, [lang]);
 
   const checkAlerts = useCallback(
@@ -168,11 +184,18 @@ export default function App() {
       await maybeAutoPrune();
       try {
         const cachedFirst = await fetchLatestGold({preferCacheFirst: true});
-        setLatestData(cachedFirst.data);
-        setFromCache(cachedFirst.fromCache);
-        setDataMode(cachedFirst.dataMode);
-        setLoading(false);
-        await checkAlerts(cachedFirst.data);
+        if (
+          cachedFirst?.data?.current &&
+          typeof cachedFirst.data.current.pavan22k === 'number' &&
+          typeof cachedFirst.data.current.gram22k === 'number' &&
+          Array.isArray(cachedFirst.data.entries)
+        ) {
+          setLatestData(cachedFirst.data);
+          setFromCache(cachedFirst.fromCache);
+          setDataMode(cachedFirst.dataMode);
+          setLoading(false);
+          await checkAlerts(cachedFirst.data);
+        }
       } catch {
         // Proceed directly to live fetch
       }
