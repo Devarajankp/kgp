@@ -68,7 +68,7 @@ flowchart LR
     Alerts["Live Alert Engine + 60s Sync Timer"]
   end
 
-  subgraph Backend["⚡ Vercel Serverless API (/api/index.ts) or Node (server.ts)"]
+  subgraph Backend["⚡ Vercel Serverless API (/api/index.mjs) or Node (server.ts)"]
     Router["Express API Router + Edge Cache (s-maxage=45s)"]
     Consensus["Multi-Source Consensus Engine (8 Kerala Feeds)"]
   end
@@ -94,7 +94,7 @@ flowchart LR
 
 ### Option 1: One-Click Deploy on Vercel (Recommended — Free & Real-Time)
 
-This repository includes pre-configured **`vercel.json`** and **`api/index.ts`** so both the **PWA frontend** and **real-time Express API** deploy together with zero configuration.
+This repository includes pre-configured **`vercel.json`** and **`api/index.mjs`** (built from `api/_entry.ts`) so both the **PWA frontend** and **real-time Express API** deploy together with zero configuration.
 
 <p>
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FDevarajankp%2Fkgp&project-name=kerala-gold-price&repository-name=kerala-gold-price">
@@ -105,7 +105,7 @@ This repository includes pre-configured **`vercel.json`** and **`api/index.ts`**
 **Or deploy manually from your fork:**
 1. Fork this repository on GitHub.
 2. Open **[vercel.com/new](https://vercel.com/new)** and import your forked repository.
-3. Keep the auto-detected settings (`Framework: Vite`, `Output Directory: dist` — `vercel.json` handles `--legacy-peer-deps` and `/api/*` routing automatically).
+3. Keep the auto-detected settings (`Framework: Vite`, `Output Directory: dist` — `vercel.json` handles `bun install`, serverless API bundling, and `/api/*` routing automatically).
 4. Click **Deploy** — your private real-time app and live API are ready in ~60 seconds.
 
 ---
