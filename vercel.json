@@ -32,7 +32,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api/index"
     },
     {
       "source": "/((?!api/|assets/|sw\\.js|sw-push\\.js|workbox-|manifest\\.webmanifest|pwa-|favicon|apple-touch-icon|icon\\.svg).*)",
