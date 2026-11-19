@@ -16,6 +16,7 @@ import {
   getApiBaseUrl,
   hasCustomApiBaseUrl,
   isStaticPagesEnvironment,
+  normalizeApiOrigin,
   resolveApiUrl,
   setApiBaseUrl,
 } from '../services/goldClient';
@@ -298,12 +299,47 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
   };
 
   const handleSaveServerUrl = () => {
-    const normalized = setApiBaseUrl(serverUrlInput);
+    const raw = serverUrlInput.trim();
+    if (!raw) {
+      setApiBaseUrl('');
+      setServerUrlInput('');
+      onApiServerChanged?.();
+      setFeedback('Using built-in Live API connection.');
+      return;
+    }
+
+    const parsedOrigin = normalizeApiOrigin(raw);
+    if (!parsedOrigin) {
+      setFeedback('Enter a valid server domain (e.g. https://your-app.vercel.app).');
+      return;
+    }
+
+    if (typeof window !== 'undefined' && parsedOrigin === window.location.origin) {
+      setApiBaseUrl('');
+      setServerUrlInput('');
+      onApiServerChanged?.();
+      setFeedback(
+        lang === 'ml'
+          ? 'ഈ ആപ്പ് ഇതിനകം തന്നെ ബിൽറ്റ്-ഇൻ ലൈവ് API-യുമായി ബന്ധിപ്പിച്ചിരിക്കുന്നു.'
+          : 'Already connected to this site’s built-in Live API — no custom Server URL needed.',
+      );
+      return;
+    }
+
+    const normalized = setApiBaseUrl(parsedOrigin);
+    setServerUrlInput(normalized);
+    onApiServerChanged?.();
+    setFeedback(`Connected Live Server: ${normalized}`);
+  };
+
+  const handleResetServerUrl = () => {
+    setApiBaseUrl('');
+    setServerUrlInput('');
     onApiServerChanged?.();
     setFeedback(
-      normalized
-        ? `Connected Live Server: ${normalized}`
-        : 'Cleared custom server URL (using built-in origin/snapshot).',
+      lang === 'ml'
+        ? 'ബിൽറ്റ്-ഇൻ ലൈവ് API-യിലേക്ക് മാറ്റി.'
+        : 'Reset to built-in Live API connection.',
     );
   };
 
@@ -583,25 +619,36 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
           {/* Live Push Server Connection (optional for GitHub Pages static deployments) */}
           <div className="rounded-xl border border-slate-900/8 bg-white/50 p-2.5 text-[11px] dark:border-white/10 dark:bg-white/5">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                {!isStaticPagesEnvironment() && (
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
+                )}
                 {streamConnected || pushRegistered
                   ? 'Live Stream & Push Server Connected'
                   : isStaticPagesEnvironment()
                     ? 'Static Mode (GitHub Pages)'
-                    : 'Live API Connection'}
+                    : hasCustomApiBaseUrl()
+                      ? 'Custom Live API Connected'
+                      : 'Built-in Live API Connected'}
               </span>
               <button
                 type="button"
                 onClick={() => setShowServerUrlBox((v) => !v)}
-                className="font-semibold text-amber-700 hover:underline dark:text-amber-400 cursor-pointer"
+                className="font-semibold text-amber-700 hover:underline dark:text-amber-400 cursor-pointer shrink-0"
               >
-                {showServerUrlBox ? 'Hide' : 'Configure Server URL'}
+                {showServerUrlBox
+                  ? 'Hide'
+                  : isStaticPagesEnvironment()
+                    ? 'Configure Server URL'
+                    : 'Advanced'}
               </button>
             </div>
             {showServerUrlBox && (
               <div className="mt-2 space-y-1.5">
                 <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
-                  GitHub Pages runs in static demo mode. For real-time live refresh &amp; instant alerts, deploy this repo to Vercel (or Node/Render) and optionally link its API URL here:
+                  {isStaticPagesEnvironment()
+                    ? 'GitHub Pages runs in static demo mode. Paste your deployed Vercel base domain (e.g. https://your-app.vercel.app) to enable real-time sync:'
+                    : 'This site already uses its built-in Live API automatically — no setup needed. Only enter another Vercel/Node base domain here if you want to override it (do not paste the Shortcut URL below).'}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <input
@@ -618,6 +665,15 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
                   >
                     Connect
                   </button>
+                  {(hasCustomApiBaseUrl() || serverUrlInput.trim().length > 0) && (
+                    <button
+                      type="button"
+                      onClick={handleResetServerUrl}
+                      className="min-h-[34px] rounded-lg border border-slate-900/12 bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-200 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -627,7 +683,7 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
           <div className="rounded-xl border border-slate-900/8 bg-white/50 p-2.5 text-[11px] dark:border-white/10 dark:bg-white/5">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                iPhone Shortcut / API Automation URL
+                iPhone Shortcut / Automation URL
               </span>
               <button
                 type="button"
@@ -639,7 +695,7 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
               </button>
             </div>
             <p className="mt-1 text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
-              Use Apple <strong>Shortcuts → Automation (Daily 9:45 AM &amp; 4:00 PM)</strong> → <em>Get Contents of URL</em> → <em>Show Notification</em> for Lock-Screen alerts even when the app is closed.
+              Paste this inside the Apple <strong>Shortcuts app → Automation (9:45 AM &amp; 4:00 PM)</strong> → <em>Get Contents of URL</em> → <em>Show Notification</em> (not in the Server URL box above).
             </p>
           </div>
 

@@ -17,37 +17,124 @@ interface SnapshotBundle {
 
 const API_BASE_STORAGE_KEY = 'kgp-api-base-url';
 
+export function normalizeApiOrigin(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProto);
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !parsed.hostname) {
+      return '';
+    }
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+function isValidLatestGoldResponse(value: unknown): value is LatestGoldResponse {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Partial<LatestGoldResponse>;
+  return Boolean(
+    v.current &&
+      typeof v.current === 'object' &&
+      typeof v.current.pavan22k === 'number' &&
+      Number.isFinite(v.current.pavan22k) &&
+      v.current.pavan22k > 0 &&
+      typeof v.current.gram22k === 'number' &&
+      Number.isFinite(v.current.gram22k) &&
+      v.current.gram22k > 0 &&
+      Array.isArray(v.entries),
+  );
+}
+
+function isValidHistoryResponse(value: unknown): value is HistoryResponse {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Partial<HistoryResponse>;
+  return (
+    (v.mode === 'daily' || v.mode === 'monthly' || v.mode === 'yearly') &&
+    typeof v.title === 'string' &&
+    (Array.isArray(v.dailyEntries) || Array.isArray(v.monthlyEntries) || Array.isArray(v.yearlyEntries))
+  );
+}
+
+function isValidSpotResponse(value: unknown): value is LiveSpotMarketData {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Partial<LiveSpotMarketData>;
+  return (
+    typeof v.spot24kGramInr === 'number' &&
+    Number.isFinite(v.spot24kGramInr) &&
+    v.spot24kGramInr > 0 &&
+    typeof v.spot22kGramInr === 'number' &&
+    Number.isFinite(v.spot22kGramInr) &&
+    v.spot22kGramInr > 0
+  );
+}
+
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
-    const saved = window.localStorage.getItem(API_BASE_STORAGE_KEY)?.trim();
-    if (saved) {
-      return saved.endsWith('/') ? saved : `${saved}/`;
+    try {
+      const saved = window.localStorage.getItem(API_BASE_STORAGE_KEY)?.trim();
+      if (saved) {
+        const cleanOrigin = normalizeApiOrigin(saved);
+        // Auto-heal: remove invalid URLs or redundant same-origin overrides (e.g. pasted Shortcut URLs on Vercel)
+        if (!cleanOrigin || cleanOrigin === window.location.origin) {
+          window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+        } else {
+          const canonical = `${cleanOrigin}/`;
+          if (saved !== canonical) {
+            window.localStorage.setItem(API_BASE_STORAGE_KEY, canonical);
+          }
+          return canonical;
+        }
+      }
+    } catch {
+      // Ignore restricted storage
     }
   }
   const envBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
   if (envBase) {
-    return envBase.endsWith('/') ? envBase : `${envBase}/`;
+    const cleanEnv = normalizeApiOrigin(envBase);
+    if (cleanEnv) {
+      return `${cleanEnv}/`;
+    }
   }
   return import.meta.env.BASE_URL || '/';
 }
 
 export function setApiBaseUrl(nextUrl: string): string {
   if (typeof window === 'undefined') return '';
-  const trimmed = nextUrl.trim().replace(/\/+$/, '');
-  if (!trimmed) {
-    window.localStorage.removeItem(API_BASE_STORAGE_KEY);
-    return '';
+  const cleanOrigin = normalizeApiOrigin(nextUrl);
+  try {
+    if (!cleanOrigin || cleanOrigin === window.location.origin) {
+      window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+      return '';
+    }
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, `${cleanOrigin}/`);
+  } catch {
+    // Ignore restricted storage
   }
-  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  window.localStorage.setItem(API_BASE_STORAGE_KEY, `${normalized}/`);
-  return normalized;
+  return cleanOrigin;
 }
 
 export function hasCustomApiBaseUrl(): boolean {
-  if (typeof window !== 'undefined' && window.localStorage.getItem(API_BASE_STORAGE_KEY)?.trim()) {
-    return true;
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem(API_BASE_STORAGE_KEY)?.trim();
+      if (saved) {
+        const cleanOrigin = normalizeApiOrigin(saved);
+        if (!cleanOrigin || cleanOrigin === window.location.origin) {
+          window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+        } else {
+          return true;
+        }
+      }
+    } catch {
+      // Ignore restricted storage
+    }
   }
-  return Boolean((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim());
+  const envBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  return Boolean(envBase && normalizeApiOrigin(envBase));
 }
 
 export function resolveApiUrl(apiPath: string): string {
@@ -105,7 +192,10 @@ async function fetchStaticLatestJson(): Promise<LatestGoldResponse | null> {
     });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
-      return (await res.json()) as LatestGoldResponse;
+      const json: unknown = await res.json();
+      if (isValidLatestGoldResponse(json)) {
+        return json;
+      }
     }
   } catch {
     // Fallback to snapshot below
@@ -133,7 +223,7 @@ export async function fetchLatestGold(options?: {
 
   if (options?.preferCacheFirst && !forceRefresh) {
     const cached = await readLatestCache();
-    if (cached) {
+    if (cached && isValidLatestGoldResponse(cached.data)) {
       return {data: cached.data, fromCache: true, dataMode: 'offline-cache'};
     }
   }
@@ -154,10 +244,12 @@ export async function fetchLatestGold(options?: {
       });
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
-        const data = (await res.json()) as LatestGoldResponse;
-        await saveLatestCache(data);
-        await maybeAutoPrune();
-        return {data, fromCache: false, dataMode: 'live-api'};
+        const data: unknown = await res.json();
+        if (isValidLatestGoldResponse(data)) {
+          await saveLatestCache(data);
+          await maybeAutoPrune();
+          return {data, fromCache: false, dataMode: 'live-api'};
+        }
       }
     } catch {
       // Live backend unavailable (offline or static host)
@@ -165,9 +257,11 @@ export async function fetchLatestGold(options?: {
   }
 
   // 2. On Static GitHub Pages or Offline: check deployed static JSON & IndexedDB cache, keeping whichever is NEWER!
-  const cached = await readLatestCache();
+  const rawCached = await readLatestCache();
+  const cached = rawCached && isValidLatestGoldResponse(rawCached.data) ? rawCached : null;
+  const bundledLatest = (await loadBundledSnapshot(forceRefresh))?.latest;
   const staticLatest =
-    (await fetchStaticLatestJson()) || (await loadBundledSnapshot(forceRefresh))?.latest || null;
+    (await fetchStaticLatestJson()) || (isValidLatestGoldResponse(bundledLatest) ? bundledLatest : null);
 
   if (staticLatest && (!cached || isCandidateFresher(staticLatest, cached.data))) {
     await saveLatestCache(staticLatest);
@@ -209,7 +303,10 @@ async function fetchStaticHistoryJson(params: {
     });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
-      return (await res.json()) as HistoryResponse;
+      const json: unknown = await res.json();
+      if (isValidHistoryResponse(json)) {
+        return json;
+      }
     }
   } catch {
     // Offline or archive not present in static bundle
@@ -241,7 +338,7 @@ export async function fetchGoldHistory(params: {
 
   if (!params.forceRefresh) {
     const cached = await readHistoryCache(key);
-    if (cached) {
+    if (cached && isValidHistoryResponse(cached.data)) {
       const maxStaleMs = isActivePeriod ? 10 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
       if (Date.now() - cached.cachedAt < maxStaleMs) {
         return {data: cached.data, fromCache: true};
@@ -262,9 +359,11 @@ export async function fetchGoldHistory(params: {
       });
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
-        const data = (await res.json()) as HistoryResponse;
-        await saveHistoryCache(key, data);
-        return {data, fromCache: false};
+        const data: unknown = await res.json();
+        if (isValidHistoryResponse(data)) {
+          await saveHistoryCache(key, data);
+          return {data, fromCache: false};
+        }
       }
     } catch {
       // Fall back to static history JSON / cache
@@ -286,7 +385,8 @@ export async function fetchGoldHistory(params: {
 
   // 3. Fallback to bundled snapshot ONLY if the year/month matches exactly!
   const snapshot = await loadBundledSnapshot(params.forceRefresh);
-  const staleCache = await readHistoryCache(key);
+  const rawStaleCache = await readHistoryCache(key);
+  const staleCache = rawStaleCache && isValidHistoryResponse(rawStaleCache.data) ? rawStaleCache : null;
 
   if (snapshot) {
     if (params.mode === 'yearly' && snapshot.yearly) {
@@ -348,15 +448,20 @@ export async function fetchGoldHistory(params: {
 }
 
 export async function fetchLiveSpotMarket(forceRefresh = false): Promise<LiveSpotMarketData | null> {
-  try {
-    const qs = forceRefresh ? `?_ts=${Date.now()}` : '';
-    const res = await fetch(resolveApiUrl(`api/gold/spot${qs}`), {cache: 'no-store'});
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      return (await res.json()) as LiveSpotMarketData;
+  if (!isStaticPagesEnvironment()) {
+    try {
+      const qs = forceRefresh ? `?_ts=${Date.now()}` : '';
+      const res = await fetch(resolveApiUrl(`api/gold/spot${qs}`), {cache: 'no-store'});
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const json: unknown = await res.json();
+        if (isValidSpotResponse(json)) {
+          return json;
+        }
+      }
+    } catch {
+      // Live backend unavailable; try synced static snapshot below
     }
-  } catch {
-    // Live backend unavailable; try synced static snapshot below
   }
 
   try {
@@ -365,7 +470,10 @@ export async function fetchLiveSpotMarket(forceRefresh = false): Promise<LiveSpo
     });
     const contentType = staticRes.headers.get('content-type') || '';
     if (staticRes.ok && contentType.includes('application/json')) {
-      return (await staticRes.json()) as LiveSpotMarketData;
+      const json: unknown = await staticRes.json();
+      if (isValidSpotResponse(json)) {
+        return json;
+      }
     }
   } catch {
     // Offline fallback
@@ -448,8 +556,8 @@ export function subscribeGoldStream(
         if (closed) return;
         onConnectionChange?.(true);
         try {
-          const parsed = JSON.parse((event as MessageEvent).data) as LatestGoldResponse;
-          if (parsed?.current?.pavan22k) {
+          const parsed: unknown = JSON.parse((event as MessageEvent).data);
+          if (isValidLatestGoldResponse(parsed)) {
             void saveLatestCache(parsed);
             onUpdate(parsed);
           }
