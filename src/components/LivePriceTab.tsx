@@ -9,6 +9,7 @@ import {
   Server,
   ShieldAlert,
 } from 'lucide-react';
+import {AnimatePresence, motion} from 'motion/react';
 import React, {useMemo, useState} from 'react';
 import {TRANSLATIONS} from '../i18n/translations';
 import type {
@@ -22,9 +23,11 @@ import {X} from 'lucide-react';
 import type {ActiveAlertEvent, PriceAlertConfig} from '../services/priceAlerts';
 import type {DataSourceMode} from '../services/goldClient';
 import {formatInr, formatSignedInr} from '../utils/format';
+import {AnimatedNumber} from './AnimatedNumber';
 import {MarketOutlookTile} from './MarketOutlookTile';
 import {PriceChart, type ChartPoint} from './PriceChart';
 import {SyncTimerPill} from './SyncTimerPill';
+import {TiltGoldCard} from './TiltGoldCard';
 
 interface LivePriceTabProps {
   lang: AppLanguage;
@@ -37,6 +40,7 @@ interface LivePriceTabProps {
   streamConnected?: boolean;
   lastSyncedAt?: number | null;
   autoSyncIntervalMs?: number;
+  priceFlashDir?: 'up' | 'down' | null;
   error: string | null;
   preferredSource: PreferredSource;
   alertConfig: PriceAlertConfig | null;
@@ -86,7 +90,8 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
   dataMode = 'live-api',
   streamConnected = false,
   lastSyncedAt = null,
-  autoSyncIntervalMs = 150_000,
+  autoSyncIntervalMs = 60_000,
+  priceFlashDir = null,
   error,
   preferredSource,
   alertConfig,
@@ -304,75 +309,98 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
         </div>
 
         {/* Multi-Source Fallback Inspector */}
-        {showSources && (
-          <div className="mt-3.5 border-t border-slate-900/8 pt-3 dark:border-white/10">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] sm:text-xs font-semibold text-slate-800 dark:text-slate-200">
-                {t.providersHeading}
-              </span>
-              <div className="flex items-center gap-2">
-                <select
-                  aria-label="Select preferred price source"
-                  value={preferredSource}
-                  onChange={(e) => onSelectSource(e.target.value as PreferredSource)}
-                  className="min-h-[34px] rounded-lg border border-slate-900/12 bg-white/80 px-2.5 py-1 text-[11px] sm:text-xs font-medium text-slate-800 dark:border-white/15 dark:bg-slate-900/80 dark:text-slate-100"
-                >
-                  {SOURCE_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => onRefresh(true)}
-                  disabled={refreshing}
-                  className="min-h-[34px] rounded-lg border border-slate-900/12 bg-white/70 px-2.5 py-1 text-[11px] sm:text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
-                >
-                  {t.probeAllBtn}
-                </button>
-              </div>
-            </div>
-
-            {data.fallbackChain && data.fallbackChain.length > 0 && (
-              <div className="mt-2.5 grid grid-cols-2 lg:grid-cols-4 gap-2">
-                {data.fallbackChain.map((probe) => (
-                  <div
-                    key={probe.id}
-                    className="rounded-xl border border-slate-900/8 bg-white/55 px-2.5 py-2 text-[11px] dark:border-white/10 dark:bg-white/5"
+        <AnimatePresence initial={false}>
+          {showSources && (
+            <motion.div
+              key="sources-drawer"
+              initial={{opacity: 0, y: -6}}
+              animate={{opacity: 1, y: 0}}
+              exit={{opacity: 0, y: -4}}
+              transition={{duration: 0.18, ease: [0.16, 1, 0.3, 1]}}
+              className="mt-3.5 border-t border-slate-900/8 pt-3 dark:border-white/10"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] sm:text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {t.providersHeading}
+                </span>
+                <div className="flex items-center gap-2">
+                  <select
+                    aria-label="Select preferred price source"
+                    value={preferredSource}
+                    onChange={(e) => onSelectSource(e.target.value as PreferredSource)}
+                    className="min-h-[34px] rounded-lg border border-slate-900/12 bg-white/80 px-2.5 py-1 text-[11px] sm:text-xs font-medium text-slate-800 dark:border-white/15 dark:bg-slate-900/80 dark:text-slate-100"
                   >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-semibold text-slate-900 dark:text-white truncate">
-                        {probe.name}
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-0.5 font-medium shrink-0 ${
-                          probe.status === 'online'
-                            ? 'text-emerald-700 dark:text-emerald-400'
-                            : 'text-amber-700 dark:text-amber-400'
-                        }`}
-                      >
-                        {probe.status === 'online' ? (
-                          <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                        ) : (
-                          <ShieldAlert className="h-3 w-3" aria-hidden="true" />
-                        )}
-                        {getProbeLabel(probe.status)}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                      {probe.detail} · {probe.latencyMs}ms
-                    </p>
-                  </div>
-                ))}
+                    {SOURCE_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onRefresh(true)}
+                    disabled={refreshing}
+                    className="kgp-press min-h-[34px] rounded-lg border border-slate-900/12 bg-white/70 px-2.5 py-1 text-[11px] sm:text-xs font-semibold text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-slate-100 cursor-pointer"
+                  >
+                    {t.probeAllBtn}
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Side-by-Side 2-Column Rate Tiles — Fixed clean wrapping for 24K/18K rates with metallic shimmer */}
+              {data.fallbackChain && data.fallbackChain.length > 0 && (
+                <div className="mt-2.5 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  {data.fallbackChain.map((probe) => (
+                    <div
+                      key={probe.id}
+                      className="rounded-xl border border-slate-900/8 bg-white/55 px-2.5 py-2 text-[11px] dark:border-white/10 dark:bg-white/5"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-slate-900 dark:text-white truncate">
+                          {probe.name}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-0.5 font-medium shrink-0 ${
+                            probe.status === 'online'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-amber-700 dark:text-amber-400'
+                          }`}
+                        >
+                          {probe.status === 'online' ? (
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                          ) : (
+                            <ShieldAlert className="h-3 w-3" aria-hidden="true" />
+                          )}
+                          {getProbeLabel(probe.status)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                        {probe.detail} · {probe.latencyMs}ms
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Side-by-Side 2-Column 3D Tactile Rate Tiles with Rolling Numerals & Metallic Glare */}
         <div className="mt-2.5 sm:mt-3.5 grid grid-cols-2 gap-2.5 sm:gap-4">
-          <div className="gold-shimmer rounded-xl sm:rounded-2xl border border-amber-600/25 bg-gradient-to-br from-amber-500/14 via-amber-400/6 to-transparent p-3 sm:p-4 dark:border-amber-400/25 dark:from-amber-400/16">
+          <TiltGoldCard
+            goldAccent
+            flashDirection={priceFlashDir}
+            className="gold-shimmer rounded-xl sm:rounded-2xl border border-amber-600/25 bg-gradient-to-br from-amber-500/14 via-amber-400/6 to-transparent p-3 sm:p-4 dark:border-amber-400/25 dark:from-amber-400/16"
+          >
+            {/* Subtle 3D embossed coin seal accent in top-right corner */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 64 64"
+              className="pointer-events-none absolute -right-3 -bottom-3 h-16 w-16 sm:h-20 sm:w-20 text-amber-600/12 dark:text-amber-300/10"
+            >
+              <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="2.5" />
+              <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="3 3" />
+              <circle cx="32" cy="32" r="14" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
             <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-[11px] sm:text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t.pavanTitle}
@@ -395,7 +423,7 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
               </span>
             </div>
             <div className="mt-1 font-gold-numeral gold-text-shine text-xl sm:text-3xl font-bold tracking-tight">
-              {formatInr(data.current.pavan22k)}
+              <AnimatedNumber value={data.current.pavan22k} />
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] sm:text-xs text-slate-600 dark:text-slate-400 tabular-nums leading-snug">
               <span className="whitespace-nowrap">24K: {formatInr(data.current.pavan24kEstimate)}</span>
@@ -404,9 +432,12 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
                 {data.current.trendLabel}
               </span>
             </div>
-          </div>
+          </TiltGoldCard>
 
-          <div className="rounded-xl sm:rounded-2xl border border-slate-900/10 bg-white/60 p-3 sm:p-4 dark:border-white/10 dark:bg-white/5">
+          <TiltGoldCard
+            flashDirection={priceFlashDir}
+            className="rounded-xl sm:rounded-2xl border border-slate-900/10 bg-white/60 p-3 sm:p-4 dark:border-white/10 dark:bg-white/5"
+          >
             <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-[11px] sm:text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t.gramTitle}
@@ -426,7 +457,7 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
               </span>
             </div>
             <div className="mt-1 font-gold-numeral text-xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {formatInr(data.current.gram22k)}
+              <AnimatedNumber value={data.current.gram22k} />
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] sm:text-xs text-slate-600 dark:text-slate-400 tabular-nums leading-snug">
               <span className="whitespace-nowrap">24K: {formatInr(data.current.gram24kEstimate)}</span>
@@ -435,7 +466,7 @@ export const LivePriceTab: React.FC<LivePriceTabProps> = ({
                 18K: {formatInr(data.current.gram18kEstimate)}
               </span>
             </div>
-          </div>
+          </TiltGoldCard>
         </div>
 
         {/* Compact High/Low + Calculator Link */}

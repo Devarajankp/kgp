@@ -601,12 +601,12 @@ export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
             {showServerUrlBox && (
               <div className="mt-2 space-y-1.5">
                 <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
-                  GitHub Pages is static HTML. For instant live refresh &amp; closed-app Web Push when any website changes prices, link your hosted KGP Node server URL (e.g. Render / Railway):
+                  GitHub Pages runs in static demo mode. For real-time live refresh &amp; instant alerts, deploy this repo to Vercel (or Node/Render) and optionally link its API URL here:
                 </p>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="url"
-                    placeholder="https://your-kgp-server.onrender.com"
+                    placeholder="https://your-app.vercel.app"
                     value={serverUrlInput}
                     onChange={(e) => setServerUrlInput(e.target.value)}
                     className="flex-1 min-h-[34px] rounded-lg border border-slate-900/12 bg-white/85 px-2.5 py-1 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-white/15 dark:bg-slate-900/80 dark:text-white"

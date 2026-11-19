@@ -1261,8 +1261,10 @@ export async function getLatestGoldWithFallback(
         bestGroup = group;
       }
     }
-    // Promote only when fast secondary consensus strictly beats KeralaGold's vote count (or KeralaGold is behind today)
-    if (bestGroup.length >= 2 && (kgIsBehindToday || bestGroup.length > votesForKg)) {
+    // Promote when fast secondary consensus beats KeralaGold, KeralaGold is behind today,
+    // or LiveGoldKerala + at least one corroborating Kerala provider both post a new intraday rate.
+    const hasLgkAgreement = bestGroup.some((item) => item.probe.id === 'livegoldkerala');
+    if (bestGroup.length >= 2 && (kgIsBehindToday || bestGroup.length > votesForKg || hasLgkAgreement)) {
       consensusWinner = bestGroup[0];
     }
   }

@@ -1,13 +1,13 @@
 {
   "sourceName": "LivePriceOfGold.com",
   "sourceUrl": "https://www.livepriceofgold.com/india-gold-price.html",
-  "fetchedAt": "2026-11-18T07:04:53.707Z",
-  "spot24kGramInr": 11332.97,
-  "spot22kGramInr": 10381,
-  "spotOzInr": 352455.41,
-  "spotChangePercent": -2.02,
-  "usdInr": 93.425,
-  "usdInrChangePercent": -0.06,
-  "dayHigh24kGram": 11559.98,
-  "dayLow24kGram": 11345.52
+  "fetchedAt": "2026-11-19T07:53:08.210Z",
+  "spot24kGramInr": 11200.26,
+  "spot22kGramInr": 10259.44,
+  "spotOzInr": 348328.07,
+  "spotChangePercent": -0.44,
+  "usdInr": 93.345,
+  "usdInrChangePercent": -0.21,
+  "dayHigh24kGram": 11277.97,
+  "dayLow24kGram": 11103.37
 }

@@ -1,6 +1,7 @@
 import {Bell, Calculator, Coins, History, Moon, RefreshCw, Share2, Sun} from 'lucide-react';
 import {AnimatePresence, motion} from 'motion/react';
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {AppSplash} from './components/AppSplash';
 import {CalculatorTab} from './components/CalculatorTab';
 import {HistoryTab} from './components/HistoryTab';
 import {LivePriceTab} from './components/LivePriceTab';
@@ -30,7 +31,7 @@ type TabKey = 'history' | 'live' | 'calculator';
 
 const THEME_STORAGE_KEY = 'kgp-theme';
 const LANG_STORAGE_KEY = 'kgp-lang';
-const AUTO_SYNC_INTERVAL_MS = 150_000; // 2m 30s auto-sync window
+const AUTO_SYNC_INTERVAL_MS = 60_000; // 60s real-time live sync window on Vercel / Node API
 
 function getInitialTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light';
@@ -61,7 +62,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [priceFlashDir, setPriceFlashDir] = useState<'up' | 'down' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastPavanRef = useRef<number | null>(null);
 
   const [shareOpen, setShareOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
@@ -131,6 +134,14 @@ export default function App() {
           }),
           fetchLiveSpotMarket(force),
         ]);
+        const prevPavan = lastPavanRef.current;
+        const nextPavan = res.data.current.pavan22k;
+        if (prevPavan !== null && nextPavan !== prevPavan) {
+          setPriceFlashDir(nextPavan > prevPavan ? 'up' : 'down');
+          window.setTimeout(() => setPriceFlashDir(null), 1100);
+        }
+        lastPavanRef.current = nextPavan;
+
         setLatestData(res.data);
         setFromCache(res.fromCache);
         setDataMode(res.dataMode);
@@ -199,6 +210,13 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeGoldStream(
       (streamedLatest) => {
+        const prevPavan = lastPavanRef.current;
+        const nextPavan = streamedLatest.current.pavan22k;
+        if (prevPavan !== null && nextPavan !== prevPavan) {
+          setPriceFlashDir(nextPavan > prevPavan ? 'up' : 'down');
+          window.setTimeout(() => setPriceFlashDir(null), 1100);
+        }
+        lastPavanRef.current = nextPavan;
         setLatestData(streamedLatest);
         setFromCache(false);
         setDataMode('live-api');
@@ -233,6 +251,8 @@ export default function App() {
 
   return (
     <div className="kgp-canvas-bg fixed inset-0 h-dvh w-full flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      <AppSplash lang={lang} ready={!loading && Boolean(latestData)} />
+
       {/* Pinned Top App Bar — Safe below Dynamic Island & Always Visible */}
       <header className="shrink-0 z-30 pt-safe border-b border-slate-900/8 liquid-glass-bar dark:border-white/10">
         <div className="mx-auto flex h-11 md:h-13 max-w-6xl items-center justify-between gap-2 sm:gap-6 px-2.5 sm:px-6">
@@ -240,7 +260,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('live')}
-            className="flex items-center gap-1.5 sm:gap-2 text-left whitespace-nowrap cursor-pointer min-w-0"
+            className="kgp-press flex items-center gap-1.5 sm:gap-2 text-left whitespace-nowrap cursor-pointer min-w-0"
           >
             <img
               src={`${import.meta.env.BASE_URL}pwa-192x192.png`}
@@ -254,7 +274,7 @@ export default function App() {
             </span>
           </button>
 
-          {/* Zone 2: Desktop Primary Tabs */}
+          {/* Zone 2: Desktop Primary Tabs with Spring Shared Underline */}
           <nav
             aria-label="Primary tabs"
             className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400"
@@ -274,7 +294,11 @@ export default function App() {
                 >
                   {label}
                   {active && (
-                    <span className="absolute inset-x-0 -bottom-0.5 h-0.5 rounded-full bg-amber-600 dark:bg-amber-400" />
+                    <motion.span
+                      layoutId="kgp-desktop-tab-indicator"
+                      transition={{type: 'spring', stiffness: 420, damping: 32}}
+                      className="absolute inset-x-0 -bottom-0.5 h-0.5 rounded-full bg-amber-600 dark:bg-amber-400"
+                    />
                   )}
                 </button>
               );
@@ -371,6 +395,7 @@ export default function App() {
                   streamConnected={streamConnected}
                   lastSyncedAt={lastSyncedAt}
                   autoSyncIntervalMs={AUTO_SYNC_INTERVAL_MS}
+                  priceFlashDir={priceFlashDir}
                   error={error}
                   preferredSource={preferredSource}
                   alertConfig={alertConfig}
@@ -396,12 +421,12 @@ export default function App() {
         </div>
       </main>
 
-      {/* Pinned Native-Style Bottom Navigation Bar on Mobile — Flush to bottom edge */}
+      {/* Pinned Native-Style Bottom Navigation Bar on Mobile — Spring Active Indicator */}
       <nav
         aria-label="Mobile navigation"
         className="md:hidden shrink-0 z-40 border-t border-slate-900/10 liquid-glass-bar pb-safe dark:border-white/10"
       >
-        <div className="grid grid-cols-3 h-14 px-2 items-center">
+        <div className="grid grid-cols-3 h-14 px-2 items-center gap-1">
           {navTabs.map(({id, label, Icon}) => {
             const active = activeTab === id;
             return (
@@ -409,17 +434,24 @@ export default function App() {
                 key={id}
                 type="button"
                 onClick={() => setActiveTab(id)}
-                className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`kgp-press relative min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 transition-colors cursor-pointer whitespace-nowrap ${
                   active
-                    ? 'bg-amber-500/12 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400 font-semibold'
+                    ? 'text-amber-700 dark:text-amber-400 font-semibold'
                     : 'text-slate-600 dark:text-slate-400 font-medium'
                 }`}
               >
+                {active && (
+                  <motion.span
+                    layoutId="kgp-mobile-tab-pill"
+                    transition={{type: 'spring', stiffness: 420, damping: 32}}
+                    className="absolute inset-0 rounded-xl bg-amber-500/12 dark:bg-amber-400/15"
+                  />
+                )}
                 <Icon
-                  className={`h-5 w-5 shrink-0 ${active ? 'stroke-[2.3]' : 'stroke-[1.8]'}`}
+                  className={`relative z-10 h-5 w-5 shrink-0 ${active ? 'stroke-[2.3]' : 'stroke-[1.8]'}`}
                   aria-hidden="true"
                 />
-                <span className="text-[11px] leading-tight tracking-tight">{label}</span>
+                <span className="relative z-10 text-[11px] leading-tight tracking-tight">{label}</span>
               </button>
             );
           })}

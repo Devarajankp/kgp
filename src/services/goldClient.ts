@@ -374,6 +374,48 @@ export async function fetchLiveSpotMarket(forceRefresh = false): Promise<LiveSpo
   return null;
 }
 
+export interface ApiCapabilities {
+  realtimeSync: boolean;
+  sseSupported: boolean;
+  pushSupported: boolean;
+  runtime: 'vercel-serverless' | 'node-server' | 'static-pages';
+}
+
+export async function fetchApiCapabilities(): Promise<ApiCapabilities> {
+  if (isStaticPagesEnvironment()) {
+    return {
+      realtimeSync: false,
+      sseSupported: false,
+      pushSupported: false,
+      runtime: 'static-pages',
+    };
+  }
+  try {
+    const res = await fetch(resolveApiUrl('api/health'), {cache: 'no-store'});
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
+      const json = (await res.json()) as Partial<ApiCapabilities>;
+      return {
+        realtimeSync: json.realtimeSync ?? true,
+        sseSupported: Boolean(json.sseSupported),
+        pushSupported: Boolean(json.pushSupported),
+        runtime:
+          json.runtime === 'vercel-serverless' || json.runtime === 'node-server'
+            ? json.runtime
+            : 'node-server',
+      };
+    }
+  } catch {
+    // Offline or static fallback
+  }
+  return {
+    realtimeSync: false,
+    sseSupported: false,
+    pushSupported: false,
+    runtime: 'static-pages',
+  };
+}
+
 export function subscribeGoldStream(
   onUpdate: (data: LatestGoldResponse) => void,
   onConnectionChange?: (connected: boolean) => void,
@@ -390,30 +432,38 @@ export function subscribeGoldStream(
   let closed = false;
   let es: EventSource | null = null;
 
-  try {
-    es = new EventSource(resolveApiUrl('api/gold/stream'));
-    es.addEventListener('connected', () => {
-      if (!closed) onConnectionChange?.(true);
-    });
-    es.addEventListener('gold-update', (event) => {
-      if (closed) return;
-      onConnectionChange?.(true);
-      try {
-        const parsed = JSON.parse((event as MessageEvent).data) as LatestGoldResponse;
-        if (parsed?.current?.pavan22k) {
-          void saveLatestCache(parsed);
-          onUpdate(parsed);
+  void (async () => {
+    const caps = await fetchApiCapabilities();
+    if (closed || !caps.sseSupported) {
+      onConnectionChange?.(false);
+      return;
+    }
+
+    try {
+      es = new EventSource(resolveApiUrl('api/gold/stream'));
+      es.addEventListener('connected', () => {
+        if (!closed) onConnectionChange?.(true);
+      });
+      es.addEventListener('gold-update', (event) => {
+        if (closed) return;
+        onConnectionChange?.(true);
+        try {
+          const parsed = JSON.parse((event as MessageEvent).data) as LatestGoldResponse;
+          if (parsed?.current?.pavan22k) {
+            void saveLatestCache(parsed);
+            onUpdate(parsed);
+          }
+        } catch {
+          // Ignore malformed SSE frame
         }
-      } catch {
-        // Ignore malformed SSE frame
-      }
-    });
-    es.onerror = () => {
-      if (!closed) onConnectionChange?.(false);
-    };
-  } catch {
-    onConnectionChange?.(false);
-  }
+      });
+      es.onerror = () => {
+        if (!closed) onConnectionChange?.(false);
+      };
+    } catch {
+      onConnectionChange?.(false);
+    }
+  })();
 
   return () => {
     closed = true;

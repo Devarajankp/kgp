@@ -225,6 +225,110 @@
   );
 }
 
+/* 3D Sovereign Coin Splash & Interactive 3D Bullion Tilt Cards */
+.kgp-coin-stage {
+  perspective: 900px;
+}
+
+.kgp-coin-3d {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.kgp-tilt-card {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --glare-x: 50%;
+  --glare-y: 50%;
+  --glare-opacity: 0;
+  position: relative;
+  overflow: hidden;
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) translateZ(0);
+  transform-style: preserve-3d;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.kgp-tilt-card:active {
+  transform: perspective(900px) scale(0.985) translateZ(0);
+}
+
+.kgp-tilt-glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--glare-opacity);
+  transition: opacity 260ms ease;
+  background: radial-gradient(
+    240px circle at var(--glare-x) var(--glare-y),
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.1) 42%,
+    transparent 72%
+  );
+  z-index: 2;
+}
+
+.dark .kgp-tilt-glare {
+  background: radial-gradient(
+    240px circle at var(--glare-x) var(--glare-y),
+    rgba(255, 241, 184, 0.22) 0%,
+    rgba(239, 184, 73, 0.08) 42%,
+    transparent 72%
+  );
+}
+
+.kgp-tilt-gold {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 220, 0.72),
+    0 10px 26px -14px rgba(184, 119, 20, 0.35);
+}
+
+.dark .kgp-tilt-gold {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 163, 0.22),
+    0 12px 30px -14px rgba(0, 0, 0, 0.65);
+}
+
+@keyframes kgp-flash-emerald {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.16);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes kgp-flash-rose {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.16);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+  }
+}
+
+.kgp-flash-up {
+  animation: kgp-flash-emerald 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kgp-flash-down {
+  animation: kgp-flash-rose 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kgp-press {
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease;
+}
+
+.kgp-press:active {
+  transform: scale(0.96);
+}
+
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }
@@ -241,5 +345,8 @@
   .gold-shimmer::after,
   .gold-text-shine {
     animation: none !important;
+  }
+  .kgp-tilt-card {
+    transform: none !important;
   }
 }

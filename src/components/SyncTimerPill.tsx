@@ -67,10 +67,10 @@ export const SyncTimerPill: React.FC<SyncTimerPillProps> = ({
       disabled={refreshing}
       title={
         lang === 'ml'
-          ? `അവസാന സിങ്ക്: ${elapsedLabel} · അടുത്ത സിങ്ക്: ${nextLabel} (ഇപ്പോൾ സിങ്ക് ചെയ്യാൻ ക്ലിക്ക് ചെയ്യുക)`
-          : `Last synced ${elapsedLabel} ago · Next auto-sync in ${nextLabel}. Tap to sync now.`
+          ? `അവസാന സിങ്ക്: ${elapsedLabel} · അടുത്ത തത്സമയ സിങ്ക്: ${nextLabel} (ഇപ്പോൾ സിങ്ക് ചെയ്യാൻ ക്ലിക്ക് ചെയ്യുക)`
+          : `Last synced ${elapsedLabel} ago · Next live sync in ${nextLabel}. Tap to sync immediately.`
       }
-      className={`inline-flex min-h-[32px] sm:min-h-[34px] items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 py-1 text-[11px] font-semibold tabular-nums transition cursor-pointer whitespace-nowrap disabled:opacity-70 ${
+      className={`kgp-press inline-flex min-h-[30px] sm:min-h-[34px] items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 py-1 text-[11px] font-semibold tabular-nums transition cursor-pointer whitespace-nowrap disabled:opacity-70 ${
         streamConnected
           ? 'border-emerald-600/25 bg-emerald-500/12 text-emerald-800 hover:bg-emerald-500/20 dark:border-emerald-400/25 dark:bg-emerald-400/12 dark:text-emerald-300'
           : 'border-amber-600/30 bg-amber-500/12 text-amber-800 hover:bg-amber-500/20 dark:border-amber-400/30 dark:bg-amber-400/12 dark:text-amber-300'
@@ -92,14 +92,14 @@ export const SyncTimerPill: React.FC<SyncTimerPillProps> = ({
           <span className="hidden sm:inline">
             {streamConnected
               ? lang === 'ml'
-                ? `ലൈവ് · ${elapsedLabel}`
+                ? `ലൈവ് സ്ട്രീം · ${elapsedLabel}`
                 : `Live · ${elapsedLabel}`
               : lang === 'ml'
-                ? `സിങ്ക് ${elapsedLabel} · അടുത്തത് ${nextLabel}`
-                : `${elapsedLabel} · Next ${nextLabel}`}
+                ? `ലൈവ് · അടുത്തത് ${nextLabel}`
+                : `Live · Next ${nextLabel}`}
           </span>
           <span className="sm:hidden">
-            {streamConnected ? `Live · ${nextLabel}` : `↻ ${nextLabel}`}
+            {streamConnected ? `Live · ${nextLabel}` : `Live · ${nextLabel}`}
           </span>
         </>
       )}

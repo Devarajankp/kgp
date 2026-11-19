@@ -11,8 +11,8 @@
         "url": "https://www.keralagold.com/daily-gold-prices.htm",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 777,
-        "detail": "Active · 22 records in November 2026",
+        "latencyMs": 494,
+        "detail": "Active · 23 records in November 2026",
         "supportsHistory": true
       },
       {
@@ -21,8 +21,8 @@
         "url": "https://www.livegoldkerala.com/",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 417,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "latencyMs": 1114,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": true
       },
       {
@@ -31,8 +31,8 @@
         "url": "https://www.goodreturns.in/gold-rates/kerala.html",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 835,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "latencyMs": 694,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": false
       },
       {
@@ -41,8 +41,8 @@
         "url": "https://groww.in/gold-rates/gold-rate-today-in-kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 581,
-        "detail": "22K ₹12,216/g · Pavan ₹97,728",
+        "latencyMs": 549,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": false
       },
       {
@@ -51,8 +51,8 @@
         "url": "https://www.bankbazaar.com/gold-rate-kerala.html",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 132,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "latencyMs": 292,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": false
       },
       {
@@ -61,18 +61,18 @@
         "url": "https://www.josalukkasonline.com/gold-rate-today/kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 787,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "latencyMs": 656,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": false
       },
       {
         "id": "kalyan",
         "name": "Kalyan Jewellers",
         "url": "https://store.kalyanjewellers.net/gold-rate/kerala/en",
-        "status": "online",
-        "httpStatus": 200,
-        "latencyMs": 1057,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "status": "unavailable",
+        "httpStatus": 502,
+        "latencyMs": 1557,
+        "detail": "HTTP 502",
         "supportsHistory": false
       },
       {
@@ -81,29 +81,29 @@
         "url": "https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-kerala",
         "status": "online",
         "httpStatus": 200,
-        "latencyMs": 1161,
-        "detail": "22K ₹12,215/g · Pavan ₹97,720",
+        "latencyMs": 832,
+        "detail": "22K ₹11,980/g · Pavan ₹95,840",
         "supportsHistory": false
       }
     ],
-    "fetchedAt": "2026-11-18T07:04:52.832Z",
-    "serverLastModified": "Wed, 18 Nov 2026 04:21:26 GMT",
-    "updatedTimeIst": "18 Nov 2026, 09:51 am IST",
+    "fetchedAt": "2026-11-19T07:53:07.002Z",
+    "serverLastModified": "Thu, 19 Nov 2026 03:58:03 GMT",
+    "updatedTimeIst": "19 Nov 2026, 09:28 am IST",
     "scheduleLabel": "Morning Update",
     "monthLabel": "November 2026",
     "year": 2026,
     "monthKey": "november",
     "current": {
-      "dateLabel": "18-Nov-26",
+      "dateLabel": "19-Nov-26",
       "session": "Today",
-      "gram22k": 12215,
-      "pavan22k": 97720,
-      "gram24kEstimate": 13325,
-      "pavan24kEstimate": 106600,
-      "gram18kEstimate": 9994,
-      "changePavan": -2040,
-      "changeGram": -255,
-      "changePercent": -2.04,
+      "gram22k": 11980,
+      "pavan22k": 95840,
+      "gram24kEstimate": 13069,
+      "pavan24kEstimate": 104552,
+      "gram18kEstimate": 9802,
+      "changePavan": -1880,
+      "changeGram": -235,
+      "changePercent": -1.92,
       "direction": "down",
       "trendLabel": "Downward"
     },
@@ -113,9 +113,9 @@
       "dateLabel": "5th and 6th November 2026 (Morning)"
     },
     "monthlyLow": {
-      "pavan": 97720,
-      "gram": 12215,
-      "dateLabel": "18th November 2026"
+      "pavan": 95840,
+      "gram": 11980,
+      "dateLabel": "19th November 2026"
     },
     "entries": [
       {
@@ -401,12 +401,12 @@
         "direction": "down"
       },
       {
-        "id": "2026-11-17-yesterday-20",
+        "id": "2026-11-17-daily-20",
         "dateLabel": "17-Nov-26",
         "isoDate": "2026-11-17",
-        "session": "Yesterday",
+        "session": "Daily",
         "isToday": false,
-        "isYesterday": true,
+        "isYesterday": false,
         "pavan": 99760,
         "gram": 12470,
         "changePavan": -560,
@@ -415,17 +415,31 @@
         "direction": "down"
       },
       {
-        "id": "2026-11-18-today-21",
+        "id": "2026-11-18-yesterday-21",
         "dateLabel": "18-Nov-26",
         "isoDate": "2026-11-18",
-        "session": "Today",
-        "isToday": true,
-        "isYesterday": false,
+        "session": "Yesterday",
+        "isToday": false,
+        "isYesterday": true,
         "pavan": 97720,
         "gram": 12215,
         "changePavan": -2040,
         "changeGram": -255,
         "changePercent": -2.04,
+        "direction": "down"
+      },
+      {
+        "id": "2026-11-19-today-22",
+        "dateLabel": "19-Nov-26",
+        "isoDate": "2026-11-19",
+        "session": "Today",
+        "isToday": true,
+        "isYesterday": false,
+        "pavan": 95840,
+        "gram": 11980,
+        "changePavan": -1880,
+        "changeGram": -235,
+        "changePercent": -1.92,
         "direction": "down",
         "note": "Lowest of Month"
       }
@@ -437,17 +451,17 @@
     "subtitle": "Mid-month (15th) benchmark prices for 1 Pavan & 1 Gram in Kerala",
     "sourceName": "KeralaGold.com",
     "sourceUrl": "https://www.keralagold.com/monthly-gold-prices.htm",
-    "fetchedAt": "2026-11-18T07:04:52.849Z",
-    "serverLastModified": "Sun, 15 Nov 2026 00:55:18 GMT",
+    "fetchedAt": "2026-11-19T07:53:07.013Z",
+    "serverLastModified": "Thu, 19 Nov 2026 04:20:14 GMT",
     "high": {
       "pavan": 131160,
       "gram": 16395,
       "label": "29th January 2026 (Morning)"
     },
     "low": {
-      "pavan": 99040,
-      "gram": 12380,
-      "label": "1st January 2026"
+      "pavan": 95840,
+      "gram": 11980,
+      "label": "19th November 2026"
     },
     "monthlyEntries": [
       {
@@ -579,7 +593,7 @@
     "subtitle": "Annual 31-March benchmark prices per Pavan (8g, 22K) and per Gram",
     "sourceName": "KeralaGold.com",
     "sourceUrl": "https://www.keralagold.com/yearly-gold-prices.htm",
-    "fetchedAt": "2026-11-18T07:04:53.659Z",
+    "fetchedAt": "2026-11-19T07:53:07.030Z",
     "serverLastModified": "Wed, 01 Apr 2026 01:14:39 GMT",
     "high": {
       "pavan": 109640,
